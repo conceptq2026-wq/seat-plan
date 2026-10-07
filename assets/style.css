@@ -263,6 +263,30 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
 .seat-empty { color: #9aa6c0; font-size: 14px; display: block; margin-top: 14px; font-weight: 500; pointer-events: none; }
 .seat-blocked-text { color: var(--red-700); font-weight: 600; font-size: 14px; display: block; margin-top: 14px; pointer-events: none; }
 
+/* এডমিন: ভাঁজ করা কক্ষের তালিকা */
+.dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,0.15); flex-shrink: 0; }
+.rooms-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.rooms-sum { color: var(--muted); font-size: 15px; }
+.room-filter { height: 36px; border: 1.5px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 12px; font-size: 15px; min-width: 210px; font-family: inherit; color: var(--ink); background: #fff; }
+.room-filter:focus { outline: none; border-color: var(--blue-700); box-shadow: 0 0 0 3px rgba(31,69,168,0.18); }
+.room-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+.room-item, .rooms-head, .room-card { scroll-margin-top: 76px; }
+.room-item { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.room-item.open { border-color: var(--blue-100); }
+.room-row { width: 100%; display: grid; grid-template-columns: 18px minmax(110px, auto) minmax(70px, auto) 1fr auto; align-items: center; gap: 14px; padding: 12px 18px; background: none; border: 0; cursor: pointer; text-align: left; font: inherit; color: var(--ink); }
+.room-row:hover { background: var(--water); }
+.rr-chev { color: var(--blue-700); transition: transform 0.15s; }
+.room-item.open .rr-chev { transform: rotate(90deg); }
+.rr-no { font-size: 19px; font-weight: 700; color: var(--blue-900); white-space: nowrap; }
+.rr-floor { color: var(--muted); font-size: 15px; white-space: nowrap; }
+.rr-groups { display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 14.5px; color: var(--ink-soft); }
+.rr-group { display: inline-flex; align-items: center; gap: 6px; }
+.rr-empty { color: #9aa6c0; }
+.rr-fill { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.rr-bar { width: 80px; height: 8px; border-radius: 4px; background: var(--water); overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
+.rr-bar i { display: block; height: 100%; background: var(--green-700); }
+.room-item .room-card { border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; margin: 0; }
+
 /* ফোনের জন্য ছোট কক্ষ-নকশা */
 .room-mini { display: none; padding: 14px 12px 16px; gap: 10px; justify-content: center; }
 .mini-side { display: flex; flex-direction: column; gap: 4px; }
@@ -334,6 +358,13 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
   .summary-title { min-width: 0; }
   .admin-card { padding: 16px; }
   .admin-grid { grid-template-columns: 1fr; }
+  .status-bar { position: static; }
+  .room-row { grid-template-columns: 18px 1fr auto; gap: 4px 10px; padding: 10px 14px; }
+  .rr-floor { grid-column: 2; grid-row: 2; }
+  .rr-groups { grid-column: 2 / -1; grid-row: 3; }
+  .rr-fill { grid-column: 3; grid-row: 1; }
+  .rr-bar { width: 50px; }
+  .room-filter { min-width: 0; flex: 1; }
 }
 
 /* ---------- প্রিন্ট ---------- */
@@ -348,4 +379,7 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
   .seat-cell { border-color: #666; }
   .seat-cell.seat-found { box-shadow: none; animation: none; }
   .print-head { display: block !important; text-align: center; margin-bottom: 8px; }
+  .rooms-head, .room-row, #roomNoMatch { display: none !important; }
+  .room-item, .room-item[hidden] { display: block !important; border: 0; box-shadow: none; }
+  .room-item .room-card { border: 1px solid #000; }
 }
