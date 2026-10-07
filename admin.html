@@ -109,11 +109,21 @@
           </div>
           <div class="field"><label for="rCap">প্রতি বেঞ্চে আসন</label>
             <select id="rCap"><option value="1">১টি (একক)</option><option value="2">২টি (বাম, ডান)</option><option value="3" selected>৩টি (বাম, মাঝ, ডান)</option></select></div>
-          <button class="btn btn-primary btn-sm" id="btnAddRoom" type="button" style="width:100%">কক্ষ যোগ করুন</button>
+          <label class="check" style="margin:0 0 10px"><input type="checkbox" id="rSave" checked> সংরক্ষিত কক্ষের তালিকায় রাখুন</label>
+          <div class="ctrl-group">
+            <button class="btn btn-primary btn-sm" id="btnAddRoom" type="button" style="flex:1">কক্ষ যোগ করুন</button>
+            <button class="btn btn-sm" id="btnLibrary" type="button" style="flex:1">📚 সংরক্ষিত কক্ষ থেকে যোগ</button>
+          </div>
+        </div>
+
+        <div class="admin-box wide blue">
+          <h4>৩. একাধিক কক্ষে বা Excel থেকে বণ্টন</h4>
+          <p style="margin:0 0 12px;font-size:15px;color:var(--ink-soft)">কয়েকটি শ্রেণির রোল (হাতে লিখে বা Excel/CSV ফাইল থেকে) একসাথে কয়েকটি কক্ষে ভাগ করে বসান। চাইলে পাশাপাশি ভিন্ন শ্রেণি বসবে।</p>
+          <button class="btn btn-primary" id="btnDistribute" type="button">📥 শিক্ষার্থী বণ্টন শুরু করুন</button>
         </div>
 
         <div class="admin-box wide">
-          <h4>৩. স্বয়ংক্রিয় আসন বণ্টন</h4>
+          <h4>৪. এক কক্ষে দ্রুত বণ্টন</h4>
           <div class="field-row">
             <div class="field"><label for="aRoom">কক্ষ</label><select id="aRoom"></select></div>
             <div class="field"><label for="aCls">শ্রেণি</label><select id="aCls"></select></div>
@@ -183,6 +193,7 @@
 
 <script src="assets/config.js"></script>
 <script src="assets/common.js"></script>
+<script src="assets/importer.js"></script>
 <script src="assets/admin.js"></script>
 </body>
 </html>

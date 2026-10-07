@@ -531,7 +531,8 @@
     if (se.rooms.some(r => sameNo(r.no, f.no))) return SP.toast(`কক্ষ ${SP.bn(f.no)} এই সেশনে আগেই আছে। সম্পাদনা করতে কক্ষের "✏ সম্পাদনা" চাপুন।`, 'bad', 6000);
     const room = Object.assign({ id: SP.uid('r'), seats: {} }, f);
     openRooms.add(room.id); saveOpen();
-    commit(() => se.rooms.push(room));
+    const keep = $('rSave').checked;
+    commit(() => { se.rooms.push(room); if (keep) libUpsert(f); });
     $('rNo').value = '';
     $('aRoom').value = room.id;
     SP.toast(`কক্ষ ${SP.bn(f.no)} যোগ হয়েছে।`, 'ok');
@@ -554,7 +555,8 @@
         <div class="field"><label for="eCap">প্রতি বেঞ্চে আসন</label><select id="eCap">
           <option value="1"${room.cap === 1 ? ' selected' : ''}>১টি (একক)</option><option value="2"${room.cap === 2 ? ' selected' : ''}>২টি (বাম, ডান)</option><option value="3"${room.cap === 3 ? ' selected' : ''}>৩টি (বাম, মাঝ, ডান)</option></select></div>
         <div class="field"><label for="eMove">অন্য সেশনে সরান</label><select id="eMove">
-          ${curPlan().sessions.map(s => `<option value="${SP.esc(s.id)}"${s.id === sessionId ? ' selected' : ''}>${SP.esc(s.icon || '')} ${SP.esc(s.name)}</option>`).join('')}</select></div>`,
+          ${curPlan().sessions.map(s => `<option value="${SP.esc(s.id)}"${s.id === sessionId ? ' selected' : ''}>${SP.esc(s.icon || '')} ${SP.esc(s.name)}</option>`).join('')}</select></div>
+        <label class="check"><input type="checkbox" id="eLib"${data.settings.roomLibrary.some(x => libKey(x.no) === libKey(room.no)) ? ' checked' : ''}> সংরক্ষিত কক্ষের তালিকাতেও হালনাগাদ করুন</label>`,
       buttons: ['spacer', { label: 'বাতিল' }, { label: 'সেভ করুন', cls: 'btn-primary', onClick: bd => {
         let f;
         try { f = readRoomForm(bd, 'e'); } catch (e) { SP.toast(e.message, 'bad'); return false; }
@@ -564,7 +566,11 @@
         const lost = Object.keys(room.seats).filter(k => !SP.validKey(test, k));
         const lostStudents = lost.filter(k => SP.isStudent(room.seats[k])).length;
         if (lostStudents && !confirm(`বেঞ্চ/আসন কমানোয় ${lostStudents} জন শিক্ষার্থীর আসন বাদ পড়বে। চালিয়ে যাবেন?`)) return false;
+        const saveLib = bd.querySelector('#eLib').checked;
+        const inLib = data.settings.roomLibrary.some(x => libKey(x.no) === libKey(room.no));
+        const oldNo = room.no;
         commit(() => {
+          if (saveLib) libUpsert(f, inLib ? oldNo : undefined);
           Object.assign(room, f);
           lost.forEach(k => delete room.seats[k]);
           if (target.id !== sessionId) {
@@ -780,6 +786,301 @@
     });
   }
 
+  /* ================= সংরক্ষিত কক্ষের তালিকা ================= */
+  const libKey = no => SP.digitsEn(no).trim();
+  function libUpsert(f, oldNo) {
+    const L = data.settings.roomLibrary;
+    const k = libKey(oldNo !== undefined ? oldNo : f.no);
+    const entry = { no: f.no, floor: f.floor || '', left: f.left, right: f.right, cap: f.cap };
+    const i = L.findIndex(x => libKey(x.no) === k);
+    if (i >= 0) L[i] = entry; else L.push(entry);
+  }
+  const libSorted = () => data.settings.roomLibrary.slice().sort((a, b) => (SP.num(a.no) || 0) - (SP.num(b.no) || 0) || String(a.no).localeCompare(String(b.no)));
+  const roomShape = x => `${x.floor ? SP.esc(x.floor) + ', ' : ''}বেঞ্চ ${SP.bn(x.left)}+${SP.bn(x.right)}, প্রতি বেঞ্চে ${SP.bn(x.cap)} আসন`;
+
+  function openLibrary() {
+    const se = curSession();
+    const list = libSorted();
+    const bd = modal({
+      title: '📚 সংরক্ষিত কক্ষ',
+      width: 640,
+      body: list.length ? `
+        <div class="note">যে কক্ষগুলো "${SP.esc(se.name)}" সেশনে যোগ করতে চান, টিক দিন। নতুন কক্ষ যোগ করার সময় "সংরক্ষিত কক্ষের তালিকায় রাখুন" টিক থাকলে কক্ষটি এখানে জমা হয়।</div>
+        <div class="lib-tools">
+          <label class="check"><input type="checkbox" id="libAll"> সব বাছুন</label>
+          <button type="button" class="btn btn-xs" id="libSaveSession">এই সেশনের সব কক্ষ তালিকায় রাখুন</button>
+        </div>
+        <div class="lib-list">${list.map(x => {
+          const exists = se.rooms.some(r => sameNo(r.no, x.no));
+          return `<label class="lib-row${exists ? ' done' : ''}">
+            <input type="checkbox" value="${SP.esc(libKey(x.no))}"${exists ? ' disabled' : ''}>
+            <b>কক্ষ ${SP.bn(SP.esc(x.no))}</b>
+            <span>${roomShape(x)}${exists ? ' <em>(এই সেশনে আছে)</em>' : ''}</span>
+            <button type="button" class="btn btn-xs btn-danger" data-del="${SP.esc(libKey(x.no))}" title="তালিকা থেকে মুছুন">✕</button>
+          </label>`;
+        }).join('')}</div>`
+        : `<div class="note">এখনো কোনো কক্ষ সংরক্ষিত নেই। "নতুন কক্ষ যোগ করুন" দিয়ে কক্ষ যোগ করলে সেটি এখানে জমা হবে।</div>
+           ${se.rooms.length ? '<button type="button" class="btn btn-sm" id="libSaveSession">এই সেশনের সব কক্ষ তালিকায় রাখুন</button>' : ''}`,
+      buttons: ['spacer', { label: 'বাতিল' }, ...(list.length ? [{ label: 'নির্বাচিত কক্ষ যোগ করুন', cls: 'btn-primary', id: 'btnLibAdd', onClick: b => {
+        const keys = [...b.querySelectorAll('.lib-list input:checked')].map(i => i.value);
+        if (!keys.length) { SP.toast('অন্তত একটি কক্ষ বাছুন।', 'bad'); return false; }
+        const add = list.filter(x => keys.includes(libKey(x.no)));
+        commit(() => add.forEach(x => curSession().rooms.push({ id: SP.uid('r'), no: x.no, floor: x.floor, left: x.left, right: x.right, cap: x.cap, seats: {} })));
+        SP.toast(`${SP.bn(add.length)}টি কক্ষ যোগ হয়েছে।`, 'ok');
+      } }] : [])]
+    });
+    const all = bd.querySelector('#libAll');
+    if (all) all.onchange = () => bd.querySelectorAll('.lib-list input:not(:disabled)').forEach(i => { i.checked = all.checked; });
+    const saveSe = bd.querySelector('#libSaveSession');
+    if (saveSe) saveSe.onclick = () => {
+      commit(() => curSession().rooms.forEach(r => libUpsert(r)));
+      openLibrary();
+      SP.toast('এই সেশনের কক্ষগুলো তালিকায় রাখা হয়েছে।', 'ok');
+    };
+    bd.querySelectorAll('[data-del]').forEach(btn => btn.onclick = e => {
+      e.preventDefault();
+      const k = btn.dataset.del;
+      commit(() => { data.settings.roomLibrary = data.settings.roomLibrary.filter(x => libKey(x.no) !== k); });
+      openLibrary();
+    });
+  }
+
+  /* ================= একাধিক কক্ষে বণ্টন ================= */
+  const POS_OPTIONS = `
+    <option value="all">পর পর সকল ফাঁকা আসন</option>
+    <option value="left_right">বাম ও ডান আসন (মাঝ ফাঁকা)</option>
+    <option value="middle">শুধু মাঝের আসন</option>
+    <option value="left">শুধু বাম</option>
+    <option value="right">শুধু ডান</option>`;
+  const posOk = (room, pos, c) => pos === 'all' || (pos === 'left' && c === 1) || (pos === 'right' && c === room.cap) ||
+    (pos === 'middle' && room.cap === 3 && c === 2) || (pos === 'left_right' && (c === 1 || c === room.cap));
+
+  /** কক্ষের ব্যবহারযোগ্য আসন চার্টের ক্রমে, সাথে বেঞ্চ ও আসনের অবস্থান (দাবার ঘরের নকশার জন্য) */
+  function slotsOf(room, pos) {
+    const out = [];
+    for (let n = 1; n <= room.left + room.right; n++) {
+      const sb = SP.fromChartBench(room, n);
+      let posIdx = 0;
+      for (let c = 1; c <= room.cap; c++) {
+        if (!posOk(room, pos, c)) continue;
+        const key = SP.seatKey(sb.side, sb.bench, c);
+        if (!room.seats[key]) out.push({ key, row: sb.bench - 1, posIdx });
+        posIdx++;
+      }
+    }
+    return out;
+  }
+
+  /** একটি আসনের পাশের (একই বেঞ্চ) ও সামনে-পেছনের (একই অবস্থান) শিক্ষার্থীদের শ্রেণি */
+  function neighbourClasses(room, key) {
+    const p = SP.parseKey(key), out = new Set();
+    [[p.bench, p.c - 1], [p.bench, p.c + 1], [p.bench - 1, p.c], [p.bench + 1, p.c]].forEach(([b, c]) => {
+      const st = room.seats[SP.seatKey(p.side, b, c)];
+      if (SP.isStudent(st)) out.add(st.cls);
+    });
+    return out;
+  }
+
+  function openDistribute() {
+    const se = curSession();
+    if (!se.rooms.length) return SP.toast('আগে এই সেশনে কক্ষ যোগ করুন।', 'bad');
+    let groups = [{ cls: $('aCls').value, sec: 'ক', shiftOpt: SP.NA, dept: SP.NA, rolls: '' }];
+
+    const groupRow = (g, i) => `
+      <div class="dist-group" data-i="${i}">
+        <select class="inp" data-f="cls" aria-label="শ্রেণি">${SP.optionsHtml(SP.CLASSES, g.cls)}</select>
+        <select class="inp" data-f="sec" aria-label="শাখা">${SP.optionsHtml(SP.SECTIONS, g.sec, true)}</select>
+        <select class="inp" data-f="shiftOpt" aria-label="শিফট">${SP.optionsHtml(SP.SHIFT_OPTS, g.shiftOpt, true)}</select>
+        <select class="inp" data-f="dept" aria-label="বিভাগ">${SP.optionsHtml(SP.DEPTS, g.dept, true, true)}</select>
+        <input class="inp" data-f="rolls" value="${SP.esc(g.rolls)}" placeholder="রোল: ১-৬০, ৬৫" aria-label="রোল">
+        <span class="dist-count" data-count></span>
+        <button type="button" class="btn btn-xs btn-danger" data-rm title="এই সারি বাদ দিন">✕</button>
+      </div>`;
+
+    const bd = modal({
+      title: '📥 একাধিক কক্ষে শিক্ষার্থী বণ্টন',
+      width: 900,
+      body: `
+        <div class="dist-step">
+          <h5>১. কোন শিক্ষার্থী</h5>
+          <div class="dist-head"><span>শ্রেণি</span><span>শাখা</span><span>শিফট</span><span>বিভাগ</span><span>রোল</span><span></span><span></span></div>
+          <div id="dGroups"></div>
+          <div class="ctrl-group" style="margin-top:8px">
+            <button class="btn btn-sm" type="button" id="dAdd">➕ আরেকটি শ্রেণি/শাখা</button>
+            <button class="btn btn-sm" type="button" id="dFileBtn">📄 Excel/CSV ফাইল থেকে নিন</button>
+            <input type="file" id="dFile" accept=".xlsx,.csv,.txt" hidden>
+            <button class="btn btn-sm" type="button" id="dSample">⬇ নমুনা ফাইল</button>
+          </div>
+          <div id="dFileNote"></div>
+        </div>
+        <div class="dist-step">
+          <h5>২. কোন কক্ষে <label class="check" style="font-size:14.5px;margin-left:12px"><input type="checkbox" id="dAllRooms" checked> সব কক্ষ</label></h5>
+          <div class="dist-rooms">${se.rooms.map(r => `<label class="dist-room"><input type="checkbox" value="${SP.esc(r.id)}" checked> কক্ষ ${SP.bn(SP.esc(r.no))} <small data-free="${SP.esc(r.id)}"></small></label>`).join('')}</div>
+          <p class="hint" style="margin:6px 0 0;font-size:14px;color:var(--muted)">তালিকার ক্রমে কক্ষ ভরবে: একটি ভরলে পরেরটিতে।</p>
+        </div>
+        <div class="dist-step">
+          <h5>৩. কীভাবে বসবে</h5>
+          <div class="field-row">
+            <div class="field"><label for="dMode">সাজানো</label><select id="dMode">
+              <option value="mixed">পাশাপাশি ভিন্ন শ্রেণি (দাবার ঘরের মতো)</option>
+              <option value="seq">এক শ্রেণির পর আরেক শ্রেণি</option></select></div>
+            <div class="field"><label for="dPos">কোন আসনে</label><select id="dPos">${POS_OPTIONS}</select></div>
+            <div class="field"><label for="dOrder">রোলের ক্রম</label><select id="dOrder"><option value="seq">ক্রমান্বয়ে</option><option value="random">এলোমেলো</option></select></div>
+          </div>
+        </div>
+        <div class="dist-sum" id="dSum"></div>`,
+      buttons: ['spacer', { label: 'বাতিল' }, { label: 'বণ্টন করুন', cls: 'btn-primary', id: 'btnDistGo', onClick: () => run() }]
+    });
+    const $$ = sel => bd.querySelector(sel);
+
+    function sync() {
+      groups = [...bd.querySelectorAll('.dist-group')].map(row => {
+        const g = {};
+        row.querySelectorAll('[data-f]').forEach(el => { g[el.dataset.f] = el.value; });
+        return g;
+      });
+    }
+    function drawGroups() {
+      $$('#dGroups').innerHTML = groups.map(groupRow).join('');
+      update();
+    }
+    function parsed() {
+      return groups.map(g => {
+        if (!g.rolls.trim()) return { g, rolls: [], error: null };
+        try { return { g, rolls: parseRolls(g.rolls), error: null }; } catch (e) { return { g, rolls: [], error: e.message }; }
+      });
+    }
+    function selectedRooms() {
+      const ids = [...bd.querySelectorAll('.dist-rooms input:checked')].map(i => i.value);
+      return se.rooms.filter(r => ids.includes(r.id));
+    }
+    function update() {
+      const pos = $$('#dPos').value;
+      se.rooms.forEach(r => { const el = bd.querySelector(`[data-free="${CSS.escape(r.id)}"]`); if (el) el.textContent = `(ফাঁকা ${SP.bn(slotsOf(r, pos).length)})`; });
+      const ps = parsed();
+      bd.querySelectorAll('.dist-group').forEach((row, i) => {
+        const c = row.querySelector('[data-count]');
+        const p = ps[i];
+        c.textContent = p.error ? '⚠' : (p.rolls.length ? `${SP.bn(p.rolls.length)} জন` : '');
+        c.title = p.error || '';
+        c.classList.toggle('bad', !!p.error);
+      });
+      const total = ps.reduce((a, p) => a + p.rolls.length, 0);
+      const free = selectedRooms().reduce((a, r) => a + slotsOf(r, pos).length, 0);
+      const sum = $$('#dSum');
+      sum.className = 'dist-sum' + (total > free ? ' warn' : '');
+      sum.textContent = total
+        ? `মোট ${SP.bn(total)} জন শিক্ষার্থী, নির্বাচিত কক্ষে ফাঁকা আসন ${SP.bn(free)}টি।` + (total > free ? ` ${SP.bn(total - free)} জনের আসন হবে না, আরও কক্ষ বাছুন।` : '')
+        : 'শ্রেণি আর রোল লিখুন, অথবা Excel/CSV ফাইল দিন।';
+    }
+
+    bd.addEventListener('input', e => { if (e.target.closest('.dist-group')) sync(); update(); });
+    bd.addEventListener('change', e => {
+      if (e.target.id === 'dAllRooms') bd.querySelectorAll('.dist-rooms input').forEach(i => { i.checked = e.target.checked; });
+      if (e.target.closest('.dist-group')) sync();
+      update();
+    });
+    bd.addEventListener('click', e => {
+      if (e.target.closest('[data-rm]')) {
+        sync();
+        groups.splice(+e.target.closest('.dist-group').dataset.i, 1);
+        if (!groups.length) groups.push({ cls: $('aCls').value, sec: SP.NA, shiftOpt: SP.NA, dept: SP.NA, rolls: '' });
+        drawGroups();
+      }
+    });
+    $$('#dAdd').onclick = () => {
+      sync();
+      const last = groups[groups.length - 1] || {};
+      groups.push({ cls: last.cls || SP.CLASSES[0], sec: last.sec || SP.NA, shiftOpt: last.shiftOpt || SP.NA, dept: last.dept || SP.NA, rolls: '' });
+      drawGroups();
+      const inputs = bd.querySelectorAll('.dist-group [data-f="rolls"]');
+      inputs[inputs.length - 1].focus();
+    };
+    $$('#dSample').onclick = () => download('seat-plan-students-sample.csv', SP.importer.sampleCsv(), 'text/csv;charset=utf-8');
+    $$('#dFileBtn').onclick = () => $$('#dFile').click();
+    $$('#dFile').onchange = async () => {
+      const f = $$('#dFile').files[0];
+      $$('#dFile').value = '';
+      if (!f) return;
+      sync();
+      const note = $$('#dFileNote');
+      try {
+        const res = await SP.importer.readStudents(f, groups[0] && groups[0].cls);
+        const gs = SP.importer.groupRows(res.rows).map(g => ({ cls: g.cls, sec: g.sec, shiftOpt: g.shiftOpt, dept: g.dept, rolls: SP.importer.rangeText(g.rolls) }));
+        groups = groups.filter(g => g.rolls.trim()).concat(gs);
+        drawGroups();
+        note.innerHTML = `<div class="note" style="margin:10px 0 0">✔ "${SP.esc(f.name)}" থেকে ${SP.bn(res.rows.length)} জন শিক্ষার্থী, ${SP.bn(gs.length)}টি দল পাওয়া গেছে।${res.ignoredName ? ' নামের কলাম বাদ দেওয়া হয়েছে (নাম ওয়েবসাইটে যাবে না)।' : ''}</div>` +
+          (res.warnings.length ? `<div class="note warn" style="margin:6px 0 0">${res.warnings.map(SP.esc).join('<br>')}</div>` : '');
+      } catch (e) {
+        note.innerHTML = `<div class="note warn" style="margin:10px 0 0">${SP.esc(e.userMessage ? e.message : 'ফাইলটি পড়া যায়নি: ' + e.message)}</div>`;
+      }
+    };
+    $$('#dMode').value = 'mixed';
+    drawGroups();
+
+    function run() {
+      sync();
+      const ps = parsed();
+      const bad = ps.find(p => p.error);
+      if (bad) { SP.toast(bad.error, 'bad'); return false; }
+      const use = ps.filter(p => p.rolls.length);
+      if (!use.length) { SP.toast('অন্তত একটি শ্রেণির রোল লিখুন।', 'bad'); return false; }
+      const rooms = selectedRooms();
+      if (!rooms.length) { SP.toast('অন্তত একটি কক্ষ বাছুন।', 'bad'); return false; }
+      const mode = $$('#dMode').value, pos = $$('#dPos').value, random = $$('#dOrder').value === 'random';
+      if (pos === 'middle' && rooms.every(r => r.cap !== 3)) { SP.toast('নির্বাচিত কক্ষে মাঝের আসন নেই।', 'bad'); return false; }
+
+      // একই শিক্ষার্থী দুবার যেন না বসে
+      let already = 0;
+      const queues = use.map(p => {
+        const base = { cls: p.g.cls, sec: p.g.sec, shiftOpt: p.g.shiftOpt, dept: p.g.dept };
+        let list = p.rolls.filter(r => { const s = whereSeated(Object.assign({ roll: r }, base)); if (s) already++; return !s; });
+        if (random) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+        return { base, list, label: SP.groupLabel(base) };
+      });
+      const G = queues.length;
+      const report = [];
+      commit(() => {
+        for (const room of rooms) {
+          const got = new Map();
+          for (const s of slotsOf(room, pos)) {
+            let gi = -1;
+            const want = mode === 'mixed' ? (s.posIdx + s.row) % G : 0;
+            const order = [];
+            for (let t = 0; t < G; t++) { const k = (want + t) % G; if (queues[k].list.length) order.push(k); }
+            if (!order.length) break;
+            gi = order[0];
+            if (mode === 'mixed') {
+              // পাশে, সামনে বা পেছনে একই শ্রেণি থাকলে সম্ভব হলে অন্য শ্রেণি বসাই
+              const near = neighbourClasses(room, s.key);
+              const ok = order.find(k => !near.has(queues[k].base.cls));
+              if (ok !== undefined) gi = ok;
+            }
+            const q = queues[gi];
+            const roll = q.list.shift();
+            room.seats[s.key] = Object.assign({}, q.base, { roll });
+            if (!got.has(q.label)) got.set(q.label, []);
+            got.get(q.label).push(roll);
+          }
+          if (got.size) report.push({ room, got });
+          if (queues.every(q => !q.list.length)) break;
+        }
+      });
+      const left = queues.filter(q => q.list.length);
+      const placed = report.reduce((a, r) => a + [...r.got.values()].reduce((x, v) => x + v.length, 0), 0);
+      setTimeout(() => modal({
+        title: 'বণ্টনের ফলাফল',
+        width: 640,
+        body: `<p style="margin-top:0;font-weight:700">✔ ${SP.bn(placed)} জন শিক্ষার্থী ${SP.bn(report.length)}টি কক্ষে বসানো হয়েছে।</p>
+          <div class="dist-report">${report.map(r => `<div><b>কক্ষ ${SP.bn(SP.esc(r.room.no))}</b>: ${[...r.got].map(([lab, rolls]) => `${SP.esc(lab)}, রোল ${SP.importer.rangeText(rolls)} (${SP.bn(rolls.length)} জন)`).join('; ')}</div>`).join('')}</div>
+          ${already ? `<div class="note" style="margin-top:12px">${SP.bn(already)} জন আগে থেকেই এই প্ল্যানে বসানো আছে, তাই বাদ দেওয়া হয়েছে।</div>` : ''}
+          ${left.length ? `<div class="note warn" style="margin-top:8px">আসন পাওয়া যায়নি: ${left.map(q => `${SP.esc(q.label)}, রোল ${SP.importer.rangeText(q.list)}`).join('; ')}। আরও কক্ষ যোগ করে আবার "বণ্টন" চালান, শুধু বাকিরা বসবে।</div>` : ''}
+          <p class="hint" style="font-size:14px;color:var(--muted)">ভুল হলে ওপরের ↺ Undo চাপলে পুরো বণ্টন ফিরে যাবে।</p>`,
+        buttons: ['spacer', { label: 'ঠিক আছে', cls: 'btn-primary' }]
+      }), 30);
+    }
+  }
+
   /* ================= সেটিংস, ইমপোর্ট, ব্যাকআপ ================= */
   function fillSettings() {
     $('setSchool').value = data.settings.schoolName;
@@ -877,6 +1178,8 @@
     $('btnSaveSession').onclick = saveSession;
     $('btnDeleteSession').onclick = deleteSession;
     $('btnAddRoom').onclick = addRoom;
+    $('btnLibrary').onclick = openLibrary;
+    $('btnDistribute').onclick = openDistribute;
     $('btnAuto').onclick = autoAssign;
 
     document.querySelector('details.tools:not([open])').addEventListener('toggle', e => { if (e.target.open) fillSettings(); });

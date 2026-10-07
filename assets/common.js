@@ -78,6 +78,15 @@
         });
       });
     });
+    // সংরক্ষিত কক্ষের তালিকা: না থাকলে বর্তমান কক্ষগুলো থেকে তৈরি
+    if (!Array.isArray(s.roomLibrary)) {
+      const seen = new Map();
+      d.plans.forEach(p => p.sessions.forEach(se => se.rooms.forEach(r => {
+        const k = SP.digitsEn(r.no).trim();
+        if (!seen.has(k)) seen.set(k, { no: r.no, floor: r.floor || '', left: r.left, right: r.right, cap: r.cap });
+      })));
+      s.roomLibrary = [...seen.values()];
+    }
     return d;
   };
 
