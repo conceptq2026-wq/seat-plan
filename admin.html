@@ -16,6 +16,76 @@
 </head>
 <body class="is-admin">
 
+<!-- লগইন পাতা -->
+<div class="login-screen" id="loginScreen" hidden>
+  <div class="login-card">
+    <img class="login-logo" src="assets/logo.jpg" alt="বিদ্যালয়ের লোগো" width="88" height="88">
+    <h1>এডমিন লগইন</h1>
+    <p class="login-sub">পরীক্ষার আসনবিন্যাস ব্যবস্থাপনা</p>
+    <p class="login-msg" id="loginLoading">লোড হচ্ছে…</p>
+
+    <form id="loginForm" hidden autocomplete="on">
+      <div class="field"><label for="lUser">ব্যবহারকারীর নাম</label><input id="lUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+      <div class="field"><label for="lPass">পাসওয়ার্ড</label><input id="lPass" name="password" type="password" autocomplete="current-password" required></div>
+      <label class="check"><input type="checkbox" id="lRemember" checked> এই ডিভাইসে লগইন থাকুক</label>
+      <button class="btn btn-primary login-btn" type="submit" id="btnLogin">লগইন</button>
+      <p class="login-msg" id="loginMsg" aria-live="polite"></p>
+      <p class="login-links"><button type="button" class="linklike" id="lnkToken" data-go-token>টোকেন দিয়ে প্রবেশ (রিপোর মালিক)</button></p>
+    </form>
+
+    <form id="setupForm" hidden>
+      <div class="note">প্রথমবার সেটআপ: রিপোর মালিক একবার GitHub টোকেন দিয়ে প্রথম এডমিন তৈরি করবেন। এরপর থেকে শুধু নাম ও পাসওয়ার্ড দিয়ে লগইন।</div>
+      <div class="field-row repo-fields">
+        <div class="field"><label for="sOwner">GitHub অ্যাকাউন্ট</label><input id="sOwner" autocapitalize="none"></div>
+        <div class="field"><label for="sRepo">রিপো</label><input id="sRepo" autocapitalize="none"></div>
+      </div>
+      <div class="field"><label for="sToken">GitHub টোকেন</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
+      <details class="token-help"><summary>টোকেন কীভাবে বানাবেন?</summary>
+            <ol>
+              <li>রিপোর মালিকের অ্যাকাউন্টে লগইন করে <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">এই লিংকে</a> যান</li>
+              <li>Token name: <b>seat-plan-admin</b>, Expiration: পছন্দমতো (যেমন ১ বছর)</li>
+              <li>Repository access: <b>Only select repositories</b> → এই রিপো</li>
+              <li>Permissions → Repository permissions → <b>Contents: Read and write</b></li>
+              <li><b>Generate token</b> চেপে টোকেনটি কপি করে এখানে বসান</li>
+            </ol></details>
+      <div class="field-row">
+        <div class="field"><label for="sUser">ব্যবহারকারীর নাম (ইংরেজিতে)</label><input id="sUser" autocapitalize="none" spellcheck="false" placeholder="যেমন: head"></div>
+        <div class="field"><label for="sName">পরিচয় (ঐচ্ছিক)</label><input id="sName" placeholder="যেমন: প্রধান শিক্ষক"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="sPass">পাসওয়ার্ড (অন্তত ১০ অক্ষর)</label><input id="sPass" type="password" autocomplete="new-password"></div>
+        <div class="field"><label for="sPass2">আবার পাসওয়ার্ড</label><input id="sPass2" type="password" autocomplete="new-password"></div>
+      </div>
+      <button class="btn btn-primary login-btn" type="submit" id="btnSetup">এডমিন তৈরি করে লগইন</button>
+      <p class="login-msg" id="setupMsg" aria-live="polite"></p>
+      <p class="login-links"><button type="button" class="linklike" data-back-login>আগেই এডমিন আছে? লগইন করুন</button> <button type="button" class="linklike" data-go-token>শুধু টোকেন দিয়ে প্রবেশ</button></p>
+    </form>
+
+    <form id="tokenForm" hidden>
+      <div class="note">রিপোর মালিক সরাসরি GitHub টোকেন দিয়ে ঢুকতে পারেন। ঢুকে "স্কুলের তথ্য, রং ও ব্যাকআপ" অংশ থেকে এডমিন তৈরি করা যায়।</div>
+      <div class="field-row repo-fields">
+        <div class="field"><label for="tOwner">GitHub অ্যাকাউন্ট</label><input id="tOwner" autocapitalize="none"></div>
+        <div class="field"><label for="tRepo">রিপো</label><input id="tRepo" autocapitalize="none"></div>
+      </div>
+      <div class="field"><label for="tToken">GitHub টোকেন</label><input id="tToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
+      <details class="token-help"><summary>টোকেন কীভাবে বানাবেন?</summary>
+            <ol>
+              <li>রিপোর মালিকের অ্যাকাউন্টে লগইন করে <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">এই লিংকে</a> যান</li>
+              <li>Token name: <b>seat-plan-admin</b>, Expiration: পছন্দমতো (যেমন ১ বছর)</li>
+              <li>Repository access: <b>Only select repositories</b> → এই রিপো</li>
+              <li>Permissions → Repository permissions → <b>Contents: Read and write</b></li>
+              <li><b>Generate token</b> চেপে টোকেনটি কপি করে এখানে বসান</li>
+            </ol></details>
+      <label class="check"><input type="checkbox" id="tRemember" checked> এই ডিভাইসে মনে রাখুন</label>
+      <button class="btn btn-primary login-btn" type="submit" id="btnTokenEnter">প্রবেশ করুন</button>
+      <p class="login-msg" id="tokenMsg" aria-live="polite"></p>
+      <p class="login-links"><button type="button" class="linklike" data-back-login>নাম-পাসওয়ার্ড দিয়ে লগইন</button> <button type="button" class="linklike" id="lnkSetup">প্রথমবার সেটআপ</button></p>
+    </form>
+
+    <p class="login-foot"><a href="index.html">← শিক্ষার্থীদের পাতা</a></p>
+  </div>
+</div>
+
 <header class="site-header">
   <div class="wrap">
     <div class="header-top">
@@ -47,6 +117,7 @@
       <button class="btn btn-sm" type="button" onclick="window.print()">🖨️ প্রিন্ট</button>
       <a class="btn btn-sm" href="index.html" target="_blank" rel="noopener">👁 ওয়েবসাইট দেখুন</a>
       <button class="btn btn-publish btn-sm" id="btnPublish" type="button">🚀 ওয়েবসাইটে প্রকাশ করুন</button>
+      <button class="btn btn-sm" id="btnLogout" type="button" hidden title="এই ডিভাইস থেকে লগআউট">⎋ লগআউট</button>
     </div>
   </div>
 </div>
@@ -181,6 +252,10 @@
             <button class="btn btn-sm" id="btnBackup" type="button">⬇ ব্যাকআপ ডাউনলোড</button>
             <button class="btn btn-sm" id="btnRestore" type="button">⬆ ব্যাকআপ থেকে ফেরত</button>
           </div>
+        </div>
+        <div class="admin-box wide green">
+          <h4>👤 এডমিন ও লগইন</h4>
+          <div id="adminsBox"></div>
         </div>
       </div>
     </details>

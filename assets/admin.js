@@ -45,7 +45,6 @@
 
   const gh = {
     base() { return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}`; },
-    filePath() { return repo.dataPath.split('/').map(encodeURIComponent).join('/'); },
     ref() { return repo.branch ? `?ref=${encodeURIComponent(repo.branch)}` : ''; },
     async req(path, opts) {
       opts = opts || {};
@@ -81,40 +80,373 @@
       if (j.permissions && j.permissions.push === false) throw err('এই অ্যাকাউন্টের রিপোতে লেখার অনুমতি নেই।', 'auth');
       return j;
     },
-    /** ফাইলের sha ও কনটেন্ট; ফাইল না থাকলে {sha:null, data:null} */
-    async load() {
-      const res = await this.req(`/contents/${this.filePath()}${this.ref()}`);
-      if (res.status === 404) return { sha: null, data: null };
+    enc(p) { return p.split('/').map(encodeURIComponent).join('/'); },
+    /** যেকোনো ফাইল: {sha, text}; ফাইল না থাকলে {sha:null, text:null} */
+    async loadFile(p) {
+      const res = await this.req(`/contents/${this.enc(p)}${this.ref()}`);
+      if (res.status === 404) return { sha: null, text: null };
       if (!res.ok) throw await this.fail(res);
       const j = await res.json();
       let text;
       if (j.content && j.encoding === 'base64') text = b64decode(j.content);
       else {
-        const raw = await this.req(`/contents/${this.filePath()}${this.ref()}`, { headers: { Accept: 'application/vnd.github.raw+json' } });
+        const raw = await this.req(`/contents/${this.enc(p)}${this.ref()}`, { headers: { Accept: 'application/vnd.github.raw+json' } });
         if (!raw.ok) throw await this.fail(raw);
         text = await raw.text();
       }
-      return { sha: j.sha, data: SP.normalizeData(JSON.parse(text)) };
+      return { sha: j.sha, text };
     },
-    async sha() {
-      const res = await this.req(`/contents/${this.filePath()}${this.ref()}`);
-      if (res.status === 404) return null;
-      if (!res.ok) throw await this.fail(res);
-      return (await res.json()).sha;
-    },
-    async save(text, sha, message) {
+    async saveFile(p, text, sha, message) {
       const body = { message, content: b64encode(text) };
       if (sha) body.sha = sha;
       if (repo.branch) body.branch = repo.branch;
-      const res = await this.req(`/contents/${this.filePath()}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+      const res = await this.req(`/contents/${this.enc(p)}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) throw await this.fail(res);
       return (await res.json()).content.sha;
-    }
+    },
+    /** সিট প্ল্যানের ডেটা ফাইল */
+    async load() {
+      const f = await this.loadFile(repo.dataPath);
+      return { sha: f.sha, data: f.text === null ? null : SP.normalizeData(JSON.parse(f.text)) };
+    },
+    async sha() { return (await this.loadFile(repo.dataPath)).sha; },
+    save(text, sha, message) { return this.saveFile(repo.dataPath, text, sha, message); }
   };
+
+  /* ================= এডমিন লগইন (নাম + পাসওয়ার্ড) =================
+   * data/admins.json-এ GitHub টোকেনটি একটি গোপন চাবি (master key) দিয়ে তালাবদ্ধ থাকে।
+   * প্রতিটি এডমিনের পাসওয়ার্ড (PBKDF2 → AES-GCM) সেই চাবিটি খোলে। পাসওয়ার্ড কোথাও সংরক্ষিত হয় না।
+   */
+  const SESSION_KEY = 'seatplan_session';
+  const ADMINS_PATH = 'data/admins.json';
+  const ITER = 600000;
+  let session = null;       // {user, name}
+  let masterKey = null;     // Uint8Array(32)
+  let adminsDoc = null, adminsSha = null;
+
+  const te = new TextEncoder(), td = new TextDecoder();
+  const b64e = u8 => { let s = ''; u8.forEach(b => { s += String.fromCharCode(b); }); return btoa(s); };
+  const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function pwKey(password, salt, iter) {
+    const base = await crypto.subtle.importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  const rawKey = raw => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  async function seal(key, bytes) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    return { iv: b64e(iv), ct: b64e(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes))) };
+  }
+  async function unseal(key, box) {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(box.iv) }, key, b64d(box.ct)));
+  }
+  async function adminEntry(user, name, password, mk) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const box = await seal(await pwKey(password, salt, ITER), mk);
+    return { user, name: name || '', salt: b64e(salt), iter: ITER, iv: box.iv, ct: box.ct, updated: new Date().toISOString() };
+  }
+  const cleanUser = u => String(u || '').trim().toLowerCase();
+  function checkUser(u) { if (!/^[a-z0-9._-]{3,30}$/.test(u)) throw err('ব্যবহারকারীর নাম ৩-৩০ অক্ষরের দিন, শুধু ইংরেজি ছোট হাতের অক্ষর, সংখ্যা, . _ - চলবে (যেমন: head, teacher1)।'); }
+  function checkPassword(p1, p2) {
+    if (p1.length < 10) throw err('পাসওয়ার্ড অন্তত ১০ অক্ষরের দিন। লম্বা পাসওয়ার্ড বেশি নিরাপদ।');
+    if (p1 !== p2) throw err('দুই ঘরের পাসওয়ার্ড মেলেনি।');
+  }
+
+  function storeLogin(remember) {
+    const s = JSON.stringify({ user: session ? session.user : null, name: session ? session.name : null, token, mk: masterKey ? b64e(masterKey) : null });
+    safeSet(remember ? localStorage : sessionStorage, SESSION_KEY, s);
+    safeSet(remember ? sessionStorage : localStorage, SESSION_KEY, null);
+    safeSet(localStorage, TOKEN_KEY, null);
+    safeSet(sessionStorage, TOKEN_KEY, null);
+  }
+  const sessionRemembered = () => !!safeGet(localStorage, SESSION_KEY) || !!safeGet(localStorage, TOKEN_KEY);
+  function restoreSession() {
+    let s = null;
+    try { s = JSON.parse(safeGet(sessionStorage, SESSION_KEY) || safeGet(localStorage, SESSION_KEY) || 'null'); } catch (e) { s = null; }
+    if (s && s.token) {
+      token = s.token;
+      session = s.user ? { user: s.user, name: s.name } : null;
+      masterKey = s.mk ? b64d(s.mk) : null;
+    }
+  }
+  function logout() {
+    [localStorage, sessionStorage].forEach(st => { safeSet(st, SESSION_KEY, null); safeSet(st, TOKEN_KEY, null); });
+    location.reload();
+  }
+  function rememberRepo(owner, rp) {
+    const auto = SP.repoInfo(true);
+    if (owner === auto.owner && rp === auto.repo) safeSet(localStorage, 'seatplan_repo', null);
+    else safeSet(localStorage, 'seatplan_repo', JSON.stringify({ owner, repo: rp }));
+  }
+
+  async function fetchAdminsPublic() {
+    try {
+      const r = await fetch(ADMINS_PATH + '?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return null;
+      const d = JSON.parse(await r.text());
+      return d && Array.isArray(d.admins) ? d : null;
+    } catch (e) { return null; }
+  }
+  async function loadAdminsApi() {
+    const f = await gh.loadFile(ADMINS_PATH);
+    adminsSha = f.sha;
+    adminsDoc = f.text ? JSON.parse(f.text) : null;
+    return adminsDoc;
+  }
+  async function saveAdminsDoc(doc, message) {
+    adminsSha = await gh.saveFile(ADMINS_PATH, JSON.stringify(doc, null, 1) + '\n', adminsSha, message);
+    adminsDoc = doc;
+  }
+
+  async function loginWith(doc, user, pass) {
+    const entry = doc.admins.find(a => a.user === cleanUser(user));
+    if (!entry) throw err('ব্যবহারকারীর নাম বা পাসওয়ার্ড সঠিক নয়।');
+    let mk;
+    try { mk = await unseal(await pwKey(pass, b64d(entry.salt), entry.iter || ITER), entry); }
+    catch (e) { throw err('ব্যবহারকারীর নাম বা পাসওয়ার্ড সঠিক নয়।'); }
+    const tok = td.decode(await unseal(await rawKey(mk), doc.token));
+    if ((!repo.owner || !repo.repo) && doc.repo) { repo = Object.assign({}, repo, doc.repo); rememberRepo(doc.repo.owner, doc.repo.repo); }
+    token = tok;
+    masterKey = mk;
+    session = { user: entry.user, name: entry.name || entry.user };
+  }
+
+  /** প্রথম এডমিন: নতুন গোপন চাবি বানিয়ে টোকেন তালাবদ্ধ করা */
+  async function createFirstAdmin(user, name, pass, replaceExisting) {
+    const existing = await loadAdminsApi();
+    if (existing && existing.admins && existing.admins.length && !replaceExisting) throw err('এই রিপোতে আগেই এডমিন আছে। নাম-পাসওয়ার্ড দিয়ে লগইন করুন।');
+    const mk = crypto.getRandomValues(new Uint8Array(32));
+    const doc = {
+      version: 1,
+      note: 'এই ফাইলে GitHub টোকেন তালাবদ্ধ অবস্থায় আছে। শুধু এডমিনের পাসওয়ার্ড দিয়ে খোলে। ফাইলটি হাতে বদলাবেন না।',
+      repo: { owner: repo.owner, repo: repo.repo },
+      token: await seal(await rawKey(mk), te.encode(token)),
+      admins: [await adminEntry(user, name, pass, mk)]
+    };
+    await saveAdminsDoc(doc, 'এডমিন সেটআপ');
+    masterKey = mk;
+    session = { user, name: name || user };
+  }
+
+  /** লগইন পাতা; লগইন/সেটআপ/টোকেন-প্রবেশ সফল হলে resolve */
+  function loginGate() {
+    return new Promise(resolve => {
+      document.body.classList.add('locked');
+      const scr = $('loginScreen');
+      scr.hidden = false;
+      const auto = SP.repoInfo(true);
+      ['sOwner', 'tOwner'].forEach(id => { $(id).value = repo.owner || ''; });
+      ['sRepo', 'tRepo'].forEach(id => { $(id).value = repo.repo || ''; });
+      // ঠিকানা থেকে রিপো চেনা গেলে ঘরগুলো লুকানো থাকে
+      document.querySelectorAll('.repo-fields').forEach(el => { el.hidden = !!(auto.owner && auto.repo); });
+      const show = pane => ['loginForm', 'setupForm', 'tokenForm'].forEach(id => { $(id).hidden = id !== pane; });
+      const msg = (id, text, bad) => { const m = $(id); m.textContent = text || ''; m.className = 'login-msg' + (bad ? ' bad' : ''); };
+      const done = () => { scr.hidden = true; document.body.classList.remove('locked'); resolve(); };
+      const busy = (form, on) => form.querySelectorAll('button, input').forEach(el => { el.disabled = on; });
+
+      fetchAdminsPublic().then(doc => {
+        $('loginLoading').hidden = true;
+        show(doc && doc.admins.length ? 'loginForm' : 'setupForm');
+        $(doc && doc.admins.length ? 'lUser' : 'sToken').focus();
+      });
+      document.querySelectorAll('[data-go-token]').forEach(b => { b.onclick = () => { show('tokenForm'); $('tToken').focus(); }; });
+      $('lnkSetup').onclick = () => show('setupForm');
+      document.querySelectorAll('[data-back-login]').forEach(b => { b.onclick = () => show('loginForm'); });
+
+      $('loginForm').onsubmit = async e => {
+        e.preventDefault();
+        busy($('loginForm'), true);
+        msg('loginMsg', 'যাচাই হচ্ছে…');
+        try {
+          const doc = await fetchAdminsPublic();
+          if (!doc || !doc.admins.length) throw err('এখনো কোনো এডমিন তৈরি হয়নি। "প্রথমবার সেটআপ" করুন।');
+          await loginWith(doc, $('lUser').value, $('lPass').value);
+          storeLogin($('lRemember').checked);
+          done();
+        } catch (ex) { msg('loginMsg', ex.message, true); $('lPass').value = ''; }
+        finally { busy($('loginForm'), false); }
+      };
+
+      $('setupForm').onsubmit = async e => {
+        e.preventDefault();
+        const owner = $('sOwner').value.trim(), rp = $('sRepo').value.trim(), tk = $('sToken').value.trim();
+        const user = cleanUser($('sUser').value), name = $('sName').value.trim();
+        busy($('setupForm'), true);
+        msg('setupMsg', 'সেটআপ হচ্ছে…');
+        const oldRepo = repo;
+        try {
+          if (!owner || !rp || !tk) throw err('অ্যাকাউন্ট, রিপো ও টোকেন দিন।');
+          checkUser(user);
+          checkPassword($('sPass').value, $('sPass2').value);
+          repo = Object.assign({}, repo, { owner, repo: rp });
+          token = tk;
+          await gh.checkRepo();
+          await createFirstAdmin(user, name, $('sPass').value);
+          rememberRepo(owner, rp);
+          storeLogin(true);
+          SP.toast(`✔ এডমিন "${user}" তৈরি হয়েছে। পরেরবার এই নাম ও পাসওয়ার্ড দিয়ে লগইন করবেন।`, 'ok', 7000);
+          done();
+        } catch (ex) { repo = oldRepo; token = ''; msg('setupMsg', ex.message, true); }
+        finally { busy($('setupForm'), false); }
+      };
+
+      $('tokenForm').onsubmit = async e => {
+        e.preventDefault();
+        const owner = $('tOwner').value.trim(), rp = $('tRepo').value.trim(), tk = $('tToken').value.trim();
+        busy($('tokenForm'), true);
+        msg('tokenMsg', 'যাচাই হচ্ছে…');
+        const oldRepo = repo;
+        try {
+          if (!owner || !rp || !tk) throw err('অ্যাকাউন্ট, রিপো ও টোকেন দিন।');
+          repo = Object.assign({}, repo, { owner, repo: rp });
+          token = tk;
+          await gh.checkRepo();
+          rememberRepo(owner, rp);
+          session = null; masterKey = null;
+          storeLogin($('tRemember').checked);
+          done();
+        } catch (ex) { repo = oldRepo; token = ''; msg('tokenMsg', ex.message, true); }
+        finally { busy($('tokenForm'), false); }
+      };
+    });
+  }
+
+  /* ---------- এডমিন ব্যবস্থাপনা ---------- */
+  async function renderAdminsBox() {
+    const box = $('adminsBox');
+    if (!box) return;
+    if (conn.state !== 'ok') { box.innerHTML = '<p class="muted-text">GitHub-এ সংযোগ হলে এডমিনদের তালিকা দেখা যাবে।</p>'; return; }
+    box.innerHTML = '<p class="muted-text">লোড হচ্ছে…</p>';
+    try { await loadAdminsApi(); } catch (e) { box.innerHTML = `<div class="note warn">${SP.esc(e.message)}</div>`; return; }
+    const list = (adminsDoc && adminsDoc.admins) || [];
+    if (!list.length) {
+      box.innerHTML = `<p style="margin:0 0 10px">এখনো কোনো এডমিন অ্যাকাউন্ট নেই। প্রথম এডমিন তৈরি করলে এরপর যেকোনো ডিভাইস থেকে শুধু নাম ও পাসওয়ার্ড দিয়ে লগইন করা যাবে, টোকেন লাগবে না।</p>
+        <button class="btn btn-primary btn-sm" type="button" id="btnFirstAdmin">➕ প্রথম এডমিন তৈরি করুন</button>`;
+      return;
+    }
+    const me = session && session.user;
+    box.innerHTML = `
+      <div class="admin-list">${list.map(a => `
+        <div class="admin-row">
+          <span class="admin-who"><b>👤 ${SP.esc(a.user)}</b>${a.name ? ` <span>${SP.esc(a.name)}</span>` : ''}${a.user === me ? ' <em>(আপনি)</em>' : ''}</span>
+          ${masterKey ? `<span class="ctrl-group">
+            <button class="btn btn-xs" type="button" data-pw="${SP.esc(a.user)}">পাসওয়ার্ড বদলান</button>
+            ${a.user !== me ? `<button class="btn btn-xs btn-danger" type="button" data-deladmin="${SP.esc(a.user)}">মুছুন</button>` : ''}
+          </span>` : ''}
+        </div>`).join('')}</div>
+      ${masterKey
+        ? `<div class="ctrl-group" style="margin-top:12px">
+             <button class="btn btn-primary btn-sm" type="button" id="btnAddAdmin">➕ নতুন এডমিন</button>
+             <button class="btn btn-sm" type="button" id="btnReplaceToken">🔑 GitHub টোকেন বদলান</button>
+           </div>
+           <p class="muted-text" style="margin:8px 0 0">টোকেনের মেয়াদ শেষ হলে রিপোর মালিক নতুন টোকেন বানিয়ে "টোকেন বদলান" দিলেই সব এডমিন আগের পাসওয়ার্ডেই কাজ করবেন।</p>`
+        : `<div class="note warn" style="margin-top:12px">আপনি টোকেন দিয়ে ঢুকেছেন। এডমিন যোগ বা বদল করতে লগআউট করে নিজের নাম-পাসওয়ার্ড দিয়ে লগইন করুন।
+             পাসওয়ার্ড কারও মনে না থাকলে <button class="linklike" type="button" id="btnResetAdmins">সব এডমিন নতুন করে সেটআপ করুন</button>।</div>`}`;
+  }
+
+  function adminForm(prefix, withUser) {
+    return `
+      ${withUser ? `<div class="field-row">
+        <div class="field"><label for="${prefix}User">ব্যবহারকারীর নাম (ইংরেজিতে)</label><input id="${prefix}User" autocapitalize="none" autocomplete="off" placeholder="যেমন: teacher1"></div>
+        <div class="field"><label for="${prefix}Name">পরিচয় (ঐচ্ছিক)</label><input id="${prefix}Name" placeholder="যেমন: সহকারী শিক্ষক"></div>
+      </div>` : ''}
+      <div class="field-row">
+        <div class="field"><label for="${prefix}Pass">পাসওয়ার্ড (অন্তত ১০ অক্ষর)</label><input id="${prefix}Pass" type="password" autocomplete="new-password"></div>
+        <div class="field"><label for="${prefix}Pass2">আবার পাসওয়ার্ড</label><input id="${prefix}Pass2" type="password" autocomplete="new-password"></div>
+      </div>`;
+  }
+
+  function openAddAdmin(first) {
+    modal({
+      title: first ? '➕ প্রথম এডমিন তৈরি' : '➕ নতুন এডমিন',
+      body: `${first ? '<div class="note">এই এডমিন দিয়ে আপনি নিজে লগইন থাকবেন। বর্তমান টোকেনটি তালাবদ্ধ হয়ে রিপোতে জমা হবে।</div>' : ''}
+        ${adminForm('na', true)}
+        <p class="muted-text" style="margin:0">ব্যবহারকারীর নাম সবাই দেখতে পারে, পাসওয়ার্ড কাউকে বলবেন না।</p>`,
+      buttons: ['spacer', { label: 'বাতিল' }, { label: 'তৈরি করুন', cls: 'btn-primary', id: 'btnAdminSave', onClick: async bd => {
+        const user = cleanUser(bd.querySelector('#naUser').value), name = bd.querySelector('#naName').value.trim();
+        const p1 = bd.querySelector('#naPass').value, p2 = bd.querySelector('#naPass2').value;
+        try {
+          checkUser(user); checkPassword(p1, p2);
+          if (first) {
+            await createFirstAdmin(user, name, p1, first === 'reset');
+            storeLogin(sessionRemembered() || true);
+          } else {
+            const doc = await loadAdminsApi();
+            if (doc.admins.some(a => a.user === user)) throw err(`"${user}" নামে আগেই এডমিন আছে।`);
+            doc.admins.push(await adminEntry(user, name, p1, masterKey));
+            await saveAdminsDoc(doc, `এডমিন যোগ: ${user}`);
+          }
+          SP.toast(`✔ এডমিন "${user}" তৈরি হয়েছে। নতুন ডিভাইসে লগইন করতে ১-২ মিনিট লাগতে পারে।`, 'ok', 6000);
+          renderStatus(); renderAdminsBox();
+        } catch (e) { SP.toast(e.message, 'bad', 6000); return false; }
+      } }]
+    });
+  }
+
+  function openChangePassword(user) {
+    modal({
+      title: `🔒 "${SP.esc(user)}"-এর নতুন পাসওয়ার্ড`,
+      body: adminForm('cp', false),
+      buttons: ['spacer', { label: 'বাতিল' }, { label: 'বদলান', cls: 'btn-primary', onClick: async bd => {
+        const p1 = bd.querySelector('#cpPass').value, p2 = bd.querySelector('#cpPass2').value;
+        try {
+          checkPassword(p1, p2);
+          const doc = await loadAdminsApi();
+          const i = doc.admins.findIndex(a => a.user === user);
+          if (i < 0) throw err('এই এডমিন আর নেই।');
+          doc.admins[i] = await adminEntry(user, doc.admins[i].name, p1, masterKey);
+          await saveAdminsDoc(doc, `পাসওয়ার্ড বদল: ${user}`);
+          SP.toast('✔ পাসওয়ার্ড বদলানো হয়েছে।', 'ok');
+          renderAdminsBox();
+        } catch (e) { SP.toast(e.message, 'bad', 6000); return false; }
+      } }]
+    });
+  }
+
+  async function deleteAdmin(user) {
+    if (!confirm(`এডমিন "${user}" মুছে ফেলবেন? সে আর লগইন করতে পারবে না।`)) return;
+    try {
+      const doc = await loadAdminsApi();
+      doc.admins = doc.admins.filter(a => a.user !== user);
+      await saveAdminsDoc(doc, `এডমিন মুছে ফেলা: ${user}`);
+      SP.toast(`এডমিন "${user}" মুছে ফেলা হয়েছে।`, 'ok');
+      renderAdminsBox();
+    } catch (e) { SP.toast(e.message, 'bad', 6000); }
+  }
+
+  function openReplaceToken(reason) {
+    modal({
+      title: '🔑 GitHub টোকেন বদলান',
+      width: 600,
+      body: `${reason ? `<div class="note warn">${SP.esc(reason)}</div>` : ''}
+        <div class="note">রিপোর মালিক <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">এই লিংকে</a> নতুন টোকেন বানাবেন (শুধু এই রিপো, Contents: Read and write)। নতুন টোকেন দিলে সব এডমিন আগের পাসওয়ার্ডেই কাজ করবেন।</div>
+        <div class="field"><label for="rtToken">নতুন টোকেন</label><input id="rtToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>`,
+      buttons: ['spacer', { label: 'বাতিল' }, { label: 'বদলান', cls: 'btn-primary', id: 'btnTokenSave', onClick: async bd => {
+        const tk = bd.querySelector('#rtToken').value.trim();
+        if (!tk) { SP.toast('নতুন টোকেন দিন।', 'bad'); return false; }
+        const old = token;
+        try {
+          token = tk;
+          await gh.checkRepo();
+          const doc = await loadAdminsApi();
+          if (!doc) throw err('এডমিন ফাইল পাওয়া যায়নি।');
+          doc.token = await seal(await rawKey(masterKey), te.encode(tk));
+          await saveAdminsDoc(doc, 'GitHub টোকেন বদল');
+          storeLogin(sessionRemembered());
+          conn = { state: 'ok', msg: '' };
+          if (serverSha === null) { const r = await gh.load(); serverSha = r.sha; }
+          SP.toast('✔ নতুন টোকেন চালু হয়েছে। এখন প্রকাশ করতে পারবেন।', 'ok', 6000);
+          renderStatus();
+        } catch (e) { token = old; SP.toast(e.message, 'bad', 7000); return false; }
+      } }]
+    });
+  }
 
   /* ================= শুরু ================= */
   async function start() {
     bindEvents();
+    restoreSession();
+    if (!token) await loginGate();
+    $('btnLogout').hidden = false;
     let loaded = null;
     if (token && repo.owner && repo.repo) {
       try {
@@ -157,7 +489,10 @@
     sessionId = view.sessionId;
     fillStaticSelects();
     render();
-    if (conn.state === 'bad') SP.toast('GitHub সংযোগে সমস্যা: ' + conn.msg, 'bad', 7000);
+    if (conn.state === 'bad') {
+      SP.toast('GitHub সংযোগে সমস্যা: ' + conn.msg, 'bad', 7000);
+      if (masterKey && /টোকেন/.test(conn.msg)) setTimeout(() => openReplaceToken('টোকেনটি আর কাজ করছে না (মেয়াদ শেষ বা মুছে ফেলা হয়েছে)। নতুন টোকেন দিন।'), 400);
+    }
   }
 
   function fillStaticSelects() {
@@ -270,7 +605,10 @@
 
   function renderStatus() {
     const pill = $('connPill');
-    if (conn.state === 'ok') {
+    if (conn.state === 'ok' && session) {
+      pill.className = 'pill ok';
+      pill.innerHTML = `👤 ${SP.esc(session.name || session.user)} <span class="pill-sub">(${SP.esc(repo.owner)}/${SP.esc(repo.repo)})</span>`;
+    } else if (conn.state === 'ok') {
       pill.className = 'pill ok';
       pill.innerHTML = `🔗 ${SP.esc(repo.owner)}/${SP.esc(repo.repo)} <button type="button" data-conn>বদলান</button>`;
     } else if (conn.state === 'bad') {
@@ -400,7 +738,7 @@
   /* ================= প্রকাশ ================= */
   async function publish() {
     if (publishing || !isDirty()) return;
-    if (!token || !repo.owner || !repo.repo || conn.state !== 'ok') return openConnect(true);
+    if (!token || !repo.owner || !repo.repo || conn.state !== 'ok') return masterKey ? openReplaceToken('GitHub সংযোগ কাজ করছে না। নতুন টোকেন দিলে প্রকাশ করা যাবে।') : openConnect(true);
     publishing = true;
     renderStatus();
     $('btnPublish').textContent = '⏳ প্রকাশ হচ্ছে…';
@@ -416,7 +754,10 @@
       saveDraft();
       SP.toast('✔ প্রকাশিত হয়েছে! সাধারণত ১-২ মিনিটের মধ্যে ওয়েবসাইটে দেখা যাবে।', 'ok', 6000);
     } catch (e) {
-      if (e.code === 'auth') { conn = { state: 'bad', msg: e.message }; }
+      if (e.code === 'auth') {
+        conn = { state: 'bad', msg: e.message };
+        if (masterKey) setTimeout(() => openReplaceToken(e.message), 300);
+      }
       SP.toast(e.message, 'bad', 7000);
     } finally {
       publishing = false;
@@ -1182,7 +1523,20 @@
     $('btnDistribute').onclick = openDistribute;
     $('btnAuto').onclick = autoAssign;
 
-    document.querySelector('details.tools:not([open])').addEventListener('toggle', e => { if (e.target.open) fillSettings(); });
+    document.querySelector('details.tools:not([open])').addEventListener('toggle', e => { if (e.target.open) { fillSettings(); renderAdminsBox(); } });
+    $('btnLogout').onclick = () => {
+      if (isDirty() && !confirm('অপ্রকাশিত পরিবর্তন আছে। সেগুলো এই ডিভাইসে খসড়া হিসেবে থেকে যাবে। লগআউট করবেন?')) return;
+      logout();
+    };
+    $('adminsBox').addEventListener('click', e => {
+      if (e.target.closest('#btnFirstAdmin')) openAddAdmin(true);
+      else if (e.target.closest('#btnAddAdmin')) openAddAdmin(false);
+      else if (e.target.closest('#btnReplaceToken')) openReplaceToken();
+      else if (e.target.closest('#btnResetAdmins')) {
+        if (confirm('সব এডমিন মুছে নতুন করে প্রথম এডমিন তৈরি করবেন? অন্য এডমিনদের আবার যোগ করতে হবে।')) openAddAdmin('reset');
+      } else if (e.target.closest('[data-pw]')) openChangePassword(e.target.closest('[data-pw]').dataset.pw);
+      else if (e.target.closest('[data-deladmin]')) deleteAdmin(e.target.closest('[data-deladmin]').dataset.deladmin);
+    });
     $('btnSaveSettings').onclick = saveSettings;
     $('btnImportOld').onclick = () => $('fileOld').click();
     $('fileOld').onchange = () => readFile($('fileOld'), text => {
