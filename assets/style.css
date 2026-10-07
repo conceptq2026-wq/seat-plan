@@ -327,6 +327,9 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
 @keyframes glow { 0%,100% { box-shadow: 0 0 0 4px var(--marigold), 0 0 0 7px rgba(244,180,0,0.3); } 50% { box-shadow: 0 0 0 4px var(--marigold), 0 0 0 12px rgba(244,180,0,0.1); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
+/* শিক্ষার্থীর পাতা (সরু কলাম): কম্পিউটারে চার্ট পাতার প্রস্থে এঁটে যায় */
+@media (min-width: 761px) { .narrow .classroom-grid-wrapper { min-width: 0; padding: 16px 14px 20px; } }
+
 /* ---------- ছোট পর্দা ---------- */
 @media (max-width: 760px) {
   .has-mini .classroom-scroll { display: none; }

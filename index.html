@@ -80,6 +80,8 @@
 (function () {
   'use strict';
   let data, plan, plans, sessionId, highlight = null;
+  const openRooms = new Set(), fullRooms = new Set();
+  let roomFilter = '', printAll = false;
   const $ = id => document.getElementById(id);
   const POS_TEXT = { 'বাম': 'বেঞ্চের বাম পাশে', 'ডান': 'বেঞ্চের ডান পাশে', 'মাঝ': 'বেঞ্চের মাঝখানে', 'একক': 'একক আসন' };
 
@@ -137,9 +139,31 @@
       if (b) { sessionId = b.dataset.session; render(); }
     });
     $('rooms').addEventListener('click', e => {
+      const tg = e.target.closest('[data-toggle]');
+      if (tg) {
+        const id = tg.dataset.toggle;
+        openRooms.has(id) ? openRooms.delete(id) : openRooms.add(id);
+        render();
+        return;
+      }
+      const all = e.target.closest('[data-openall]'), none = e.target.closest('[data-closeall]');
+      if (all || none) {
+        const se = plan.sessions.find(x => x.id === sessionId);
+        se.rooms.forEach(r => all ? openRooms.add(r.id) : openRooms.delete(r.id));
+        render();
+        return;
+      }
       const b = e.target.closest('[data-full]');
-      if (b) b.closest('.room-card').classList.add('show-full');
+      if (b) { const card = b.closest('.room-card'); card.classList.add('show-full'); fullRooms.add(card.dataset.room); }
     });
+    $('rooms').addEventListener('input', e => {
+      if (e.target.id !== 'roomFilter') return;
+      roomFilter = e.target.value;
+      SP.applyRoomFilter($('rooms'), roomFilter);
+    });
+    // প্রিন্টে সব কক্ষ খোলা অবস্থায় যায়
+    window.addEventListener('beforeprint', () => { printAll = true; render(); });
+    window.addEventListener('afterprint', () => { printAll = false; render(); });
     render();
 
     // শেয়ার করা লিংক থেকে খোলা হলে সরাসরি খুঁজে দেখায়
@@ -174,12 +198,16 @@
       $('rooms').innerHTML = '<div class="empty-state">এই সেশনে এখনো কোনো কক্ষ যোগ করা হয়নি।</div>';
       return;
     }
-    $('sessionInfo').textContent = `${se.name}${se.time ? ', ' + se.time : ''} — ${SP.bn(se.rooms.length)}টি কক্ষ`;
+    $('sessionInfo').textContent = `${se.name}${se.time ? ', ' + se.time : ''}`;
     const printHead = SP.printHead(data.settings, plan, se);
-    $('rooms').innerHTML = se.rooms.map(r => SP.renderRoom(r, {
-      colors: data.settings.classColors, printHead, mini: true,
-      highlight: highlight && highlight.roomId === r.id ? highlight.key : null
-    })).join('');
+    const colors = data.settings.classColors;
+    $('rooms').innerHTML = SP.roomListHtml(se.rooms, {
+      colors, filterValue: roomFilter,
+      isOpen: id => printAll || openRooms.has(id),
+      card: r => SP.renderRoom(r, { colors, printHead, mini: true, highlight: highlight && highlight.roomId === r.id ? highlight.key : null })
+    });
+    fullRooms.forEach(id => { const c = $('room-' + id); if (c) c.classList.add('show-full'); });
+    SP.applyRoomFilter($('rooms'), roomFilter);
   }
 
   let lastFound = [];
@@ -239,6 +267,8 @@
     plan = f.plan;
     sessionId = f.session.id;
     highlight = { roomId: f.room.id, key: f.key };
+    openRooms.add(f.room.id);
+    roomFilter = '';
     render();
     const card = $('room-' + f.room.id);
     const cells = card ? [...card.querySelectorAll('.seat-found, .mini-seat.found')] : [];

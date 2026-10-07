@@ -298,6 +298,65 @@
       </article>`;
   };
 
+  /* ---------- ভাঁজ করা কক্ষের তালিকা (দুই পাতাতেই) ---------- */
+  SP.digitsEn = v => nfc(String(v || '')).replace(/[০-৯]/g, d => BN.indexOf(d)).toLowerCase();
+
+  /**
+   * opts: { colors, isOpen(id) → bool, card(room) → html, filterValue, title (ঐচ্ছিক) }
+   * প্রতিটি কক্ষ এক লাইনে; খোলা কক্ষের নিচে পুরো চার্ট
+   */
+  SP.roomListHtml = function (rooms, opts) {
+    let cap = 0, seated = 0;
+    const rows = rooms.map(r => {
+      const st = SP.roomStats(r);
+      cap += st.capacity; seated += st.assigned;
+      const open = opts.isOpen(r.id);
+      const pct = st.capacity ? Math.round(st.assigned * 100 / st.capacity) : 0;
+      const groups = Object.keys(st.groups).map(g => {
+        const rl = st.groups[g].slice().sort((a, b) => a - b);
+        const range = rl[0] === rl[rl.length - 1] ? SP.bn(rl[0]) : `${SP.bn(rl[0])}-${SP.bn(rl[rl.length - 1])}`;
+        return `<span class="rr-group"><i class="dot" style="background:${SP.esc(opts.colors[st.groupCls[g]] || '#fff')}"></i>${SP.esc(g)}, রোল ${range}</span>`;
+      }).join('');
+      return `
+        <div class="room-item${open ? ' open' : ''}" data-item="${SP.esc(r.id)}" data-search="${SP.esc(SP.digitsEn(r.no + ' ' + (r.floor || '')))}">
+          <button type="button" class="room-row" data-toggle="${SP.esc(r.id)}" aria-expanded="${open}">
+            <span class="rr-chev" aria-hidden="true">▸</span>
+            <span class="rr-no">কক্ষ ${SP.bn(SP.esc(r.no))}</span>
+            <span class="rr-floor">${SP.esc(r.floor || '')}</span>
+            <span class="rr-groups">${groups || '<span class="rr-empty">কেউ বসানো হয়নি</span>'}</span>
+            <span class="rr-fill" title="বসানো / মোট আসন"><span class="rr-bar"><i style="width:${pct}%"></i></span>${SP.bn(st.assigned)}/${SP.bn(st.capacity)}</span>
+          </button>
+          ${open ? opts.card(r) : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="rooms-head">
+        <div>
+          ${opts.title ? `<h3 class="admin-title" style="margin:0">${opts.title}</h3>` : ''}
+          <span class="rooms-sum">${SP.bn(rooms.length)}টি কক্ষ, ${SP.bn(seated)}/${SP.bn(cap)} আসনে শিক্ষার্থী। কক্ষে ক্লিক করলে চার্ট খুলবে।</span>
+        </div>
+        <div class="ctrl-group">
+          <input type="search" id="roomFilter" class="room-filter" placeholder="🔍 কক্ষ নম্বর বা তলা" value="${SP.esc(opts.filterValue || '')}" aria-label="কক্ষ খুঁজুন">
+          <button class="btn btn-sm" type="button" data-openall>সব খুলুন</button>
+          <button class="btn btn-sm" type="button" data-closeall>সব বন্ধ করুন</button>
+        </div>
+      </div>
+      <div class="room-list">${rows}</div>
+      <div class="empty-state" id="roomNoMatch" hidden>এই নম্বরে কোনো কক্ষ নেই।</div>`;
+  };
+
+  SP.applyRoomFilter = function (root, value) {
+    const q = SP.digitsEn(value).trim();
+    let shown = 0;
+    root.querySelectorAll('.room-item').forEach(el => {
+      const ok = !q || el.dataset.search.includes(q);
+      el.hidden = !ok;
+      if (ok) shown++;
+    });
+    const nm = root.querySelector('#roomNoMatch');
+    if (nm) nm.hidden = shown > 0;
+  };
+
   SP.printHead = (settings, plan, session) =>
     `<img src="assets/logo.jpg" alt="" style="height:64px;width:64px;object-fit:contain;display:block;margin:0 auto 4px">
      <div style="font-size:20px;font-weight:800">${SP.esc(settings.schoolName)}${settings.established ? ` (স্থাপিত: ${SP.esc(settings.established)})` : ''}</div>

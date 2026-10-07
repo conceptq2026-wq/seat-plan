@@ -206,7 +206,6 @@
   let roomFilter = '';
   let printAll = false;
   const saveOpen = () => safeSet(localStorage, 'seatplan_admin_open', JSON.stringify([...openRooms].slice(-300)));
-  const digitsEn = v => nfc(String(v || '')).replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d)).toLowerCase();
 
   function renderRooms(se, printHead, actions) {
     if (!se.rooms.length) {
@@ -214,54 +213,15 @@
       return;
     }
     const colors = data.settings.classColors;
-    let cap = 0, seated = 0;
-    const rows = se.rooms.map(r => {
-      const st = SP.roomStats(r);
-      cap += st.capacity; seated += st.assigned;
-      const open = printAll || openRooms.has(r.id);
-      const pct = st.capacity ? Math.round(st.assigned * 100 / st.capacity) : 0;
-      const groups = Object.keys(st.groups).map(g =>
-        `<span class="rr-group"><i class="dot" style="background:${SP.esc(colors[st.groupCls[g]] || '#fff')}"></i>${SP.esc(g)}</span>`).join('');
-      return `
-        <div class="room-item${open ? ' open' : ''}" data-item="${SP.esc(r.id)}" data-search="${SP.esc(digitsEn(r.no + ' ' + (r.floor || '')))}">
-          <button type="button" class="room-row" data-toggle="${SP.esc(r.id)}" aria-expanded="${open}">
-            <span class="rr-chev" aria-hidden="true">▸</span>
-            <span class="rr-no">কক্ষ ${SP.bn(SP.esc(r.no))}</span>
-            <span class="rr-floor">${SP.esc(r.floor || '')}</span>
-            <span class="rr-groups">${groups || '<span class="rr-empty">কেউ বসানো হয়নি</span>'}</span>
-            <span class="rr-fill" title="বসানো / মোট আসন"><span class="rr-bar"><i style="width:${pct}%"></i></span>${SP.bn(st.assigned)}/${SP.bn(st.capacity)}</span>
-          </button>
-          ${open ? SP.renderRoom(r, { admin: true, colors, printHead, actionsHtml: actions, highlight: swapFrom && swapFrom.roomId === r.id ? swapFrom.key : null }) : ''}
-        </div>`;
-    }).join('');
-    $('rooms').innerHTML = `
-      <div class="rooms-head">
-        <div>
-          <h3 class="admin-title" style="margin:0">🏫 কক্ষসমূহ</h3>
-          <span class="rooms-sum">${SP.bn(se.rooms.length)}টি কক্ষ, ${SP.bn(seated)}/${SP.bn(cap)} আসনে শিক্ষার্থী। কক্ষে ক্লিক করলে চার্ট খুলবে।</span>
-        </div>
-        <div class="ctrl-group">
-          <input type="search" id="roomFilter" class="room-filter" placeholder="🔍 কক্ষ নম্বর বা তলা" value="${SP.esc(roomFilter)}" aria-label="কক্ষ খুঁজুন">
-          <button class="btn btn-sm" type="button" data-openall>সব খুলুন</button>
-          <button class="btn btn-sm" type="button" data-closeall>সব বন্ধ করুন</button>
-        </div>
-      </div>
-      <div class="room-list">${rows}</div>
-      <div class="empty-state" id="roomNoMatch" hidden>এই নম্বরে কোনো কক্ষ নেই।</div>`;
+    $('rooms').innerHTML = SP.roomListHtml(se.rooms, {
+      colors, title: '🏫 কক্ষসমূহ', filterValue: roomFilter,
+      isOpen: id => printAll || openRooms.has(id),
+      card: r => SP.renderRoom(r, { admin: true, colors, printHead, actionsHtml: actions, highlight: swapFrom && swapFrom.roomId === r.id ? swapFrom.key : null })
+    });
     applyRoomFilter();
   }
 
-  function applyRoomFilter() {
-    const q = digitsEn(roomFilter).trim();
-    let shown = 0;
-    document.querySelectorAll('#rooms .room-item').forEach(el => {
-      const ok = !q || el.dataset.search.includes(q);
-      el.hidden = !ok;
-      if (ok) shown++;
-    });
-    const nm = $('roomNoMatch');
-    if (nm) nm.hidden = shown > 0;
-  }
+  const applyRoomFilter = () => SP.applyRoomFilter($('rooms'), roomFilter);
 
   /* ================= রেন্ডার ================= */
   function render() {
