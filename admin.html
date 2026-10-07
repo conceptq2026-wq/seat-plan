@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>এডমিন প্যানেল - আসনবিন্যাস</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="is-admin">
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="header-top">
+      <div>
+        <h1 class="school-title"><span id="schoolName">আসনবিন্যাস</span><span class="admin-badge">এডমিন</span></h1>
+        <div class="school-subtitle" id="planTitleHead">লোড হচ্ছে…</div>
+      </div>
+      <div class="shift-tabs" id="sessionTabs"></div>
+    </div>
+  </div>
+</header>
+
+<div class="status-bar">
+  <div class="wrap">
+    <div class="ctrl-group">
+      <span class="pill" id="connPill">GitHub: যাচাই হচ্ছে…</span>
+      <span class="pill" id="changePill"></span>
+    </div>
+    <div class="ctrl-group">
+      <button class="btn btn-warning btn-sm" id="btnUndo" type="button" title="শেষ পরিবর্তন ফিরিয়ে নিন">↺ Undo (<span id="undoCount">০</span>)</button>
+      <button class="btn btn-sm" id="btnDiscard" type="button" hidden>↩ খসড়া বাতিল</button>
+      <button class="btn btn-sm" type="button" onclick="window.print()">🖨️ প্রিন্ট</button>
+      <a class="btn btn-sm" href="index.html" target="_blank" rel="noopener">👁 ওয়েবসাইট দেখুন</a>
+      <button class="btn btn-publish btn-sm" id="btnPublish" type="button">🚀 ওয়েবসাইটে প্রকাশ করুন</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap" style="padding-top:20px">
+
+  <!-- ১. সিট প্ল্যান বাছাই -->
+  <section class="admin-card">
+    <h3 class="admin-title">📋 সিট প্ল্যান (পরীক্ষা)</h3>
+    <div class="plan-bar">
+      <div class="field"><label for="planSelect">প্ল্যান বেছে নিন</label><select id="planSelect"></select></div>
+      <div class="field"><label for="planTitle">পরীক্ষার নাম</label><input type="text" id="planTitle" placeholder="যেমন: অর্ধবার্ষিক পরীক্ষা - ২০২৭"></div>
+      <div class="field" style="flex:0 0 auto;min-width:0">
+        <label>&nbsp;</label>
+        <label class="check" style="height:44px"><input type="checkbox" id="planPublished"> শিক্ষার্থীদের দেখাবে</label>
+      </div>
+      <div class="ctrl-group" style="margin-bottom:0">
+        <button class="btn btn-primary" id="btnNewPlan" type="button">➕ নতুন সিট প্ল্যান</button>
+        <button class="btn btn-danger" id="btnDeletePlan" type="button">🗑 প্ল্যান মুছুন</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ২. কাজের টুল -->
+  <section class="admin-card">
+    <details class="tools" open>
+      <summary>⚙ সেশন, কক্ষ ও আসন বণ্টন</summary>
+      <div class="admin-grid">
+
+        <div class="admin-box green">
+          <h4 style="color:#166534">১. এই সেশনের তথ্য</h4>
+          <div class="field-row">
+            <div class="field" style="flex:0 0 90px;min-width:90px"><label for="sesIcon">চিহ্ন</label>
+              <select id="sesIcon"><option>☀</option><option>🌙</option><option>📝</option><option>📅</option><option>⭐</option></select></div>
+            <div class="field"><label for="sesName">সেশনের নাম</label><input type="text" id="sesName" placeholder="সকালের পরীক্ষা"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="sesTime">সময়</label><input type="text" id="sesTime" placeholder="০৯:০০ - ১২:০০"></div>
+            <div class="field"><label for="sesClasses">শ্রেণি</label><input type="text" id="sesClasses" placeholder="৬ষ্ঠ, ৭ম ও ৮ম"></div>
+          </div>
+          <div class="ctrl-group">
+            <button class="btn btn-primary btn-sm" id="btnSaveSession" type="button">সেশন সেভ করুন</button>
+            <button class="btn btn-danger btn-sm" id="btnDeleteSession" type="button">সেশন মুছুন</button>
+          </div>
+        </div>
+
+        <div class="admin-box">
+          <h4>২. নতুন কক্ষ যোগ করুন</h4>
+          <div class="field-row">
+            <div class="field"><label for="rNo">কক্ষ নম্বর</label><input type="text" id="rNo" placeholder="১০১"></div>
+            <div class="field"><label for="rFloor">তলা/অবস্থান</label><input type="text" id="rFloor" placeholder="১ম তলা"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="rLeft">বাম সারির বেঞ্চ</label><input type="text" id="rLeft" inputmode="numeric" placeholder="৮"></div>
+            <div class="field"><label for="rRight">ডান সারির বেঞ্চ</label><input type="text" id="rRight" inputmode="numeric" placeholder="৮"></div>
+          </div>
+          <div class="field"><label for="rCap">প্রতি বেঞ্চে আসন</label>
+            <select id="rCap"><option value="1">১টি (একক)</option><option value="2">২টি (বাম, ডান)</option><option value="3" selected>৩টি (বাম, মাঝ, ডান)</option></select></div>
+          <button class="btn btn-primary btn-sm" id="btnAddRoom" type="button" style="width:100%">কক্ষ যোগ করুন</button>
+        </div>
+
+        <div class="admin-box wide">
+          <h4>৩. স্বয়ংক্রিয় আসন বণ্টন</h4>
+          <div class="field-row">
+            <div class="field"><label for="aRoom">কক্ষ</label><select id="aRoom"></select></div>
+            <div class="field"><label for="aCls">শ্রেণি</label><select id="aCls"></select></div>
+            <div class="field"><label for="aSec">শাখা</label><select id="aSec"></select></div>
+            <div class="field"><label for="aShift">শিফট</label><select id="aShift"></select></div>
+            <div class="field"><label for="aDept">বিভাগ</label><select id="aDept"></select></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="aRolls">রোল নম্বর</label><input type="text" id="aRolls" placeholder="১-৪০  অথবা  ১-১০, ১৫, ২০-২৫">
+              <span class="hint">একাধিক রেঞ্জ কমা দিয়ে লেখা যাবে</span></div>
+            <div class="field"><label for="aBenches">বেঞ্চ (চার্টের নম্বর)</label><input type="text" id="aBenches" placeholder="ফাঁকা = সব বেঞ্চ, যেমন ১-৮">
+              <span class="hint">ডান সারির নম্বর বাম সারির পর থেকে গোনা হয়</span></div>
+            <div class="field"><label for="aPos">কোন আসনে</label>
+              <select id="aPos">
+                <option value="all">পর পর সকল ফাঁকা আসন</option>
+                <option value="left_right">বাম ও ডান আসন</option>
+                <option value="middle">শুধু মাঝের আসন</option>
+                <option value="left">শুধু বাম</option>
+                <option value="right">শুধু ডান</option>
+              </select></div>
+            <div class="field"><label for="aOrder">ক্রম</label>
+              <select id="aOrder"><option value="seq">ক্রমান্বয়ে</option><option value="random">এলোমেলো</option></select></div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btnAuto" type="button" style="width:100%">স্বয়ংক্রিয় আসন বরাদ্দ দিন</button>
+          <p class="hint" style="margin:8px 0 0;font-size:14px;font-weight:600;color:var(--muted)">💡 একজন শিক্ষার্থী বসাতে, ব্লক করতে বা সরাতে সরাসরি চার্টের সিটে ক্লিক করুন। মাউস দিয়ে টেনে সিট বদলানো যায়।</p>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ৩. সেটিংস ও ইমপোর্ট -->
+  <section class="admin-card">
+    <details class="tools">
+      <summary>🏫 স্কুলের তথ্য, রং ও ব্যাকআপ</summary>
+      <div class="admin-grid">
+        <div class="admin-box blue wide">
+          <h4 style="color:#0369a1">স্কুলের তথ্য ও শ্রেণির রং</h4>
+          <div class="field-row">
+            <div class="field" style="flex:3"><label for="setSchool">স্কুলের নাম</label><input type="text" id="setSchool"></div>
+            <div class="field"><label for="setEst">স্থাপিত</label><input type="text" id="setEst"></div>
+          </div>
+          <div class="color-picker-grid" id="colorGrid"></div>
+          <button class="btn btn-primary btn-sm" id="btnSaveSettings" type="button" style="width:100%;margin-top:12px">সেটিংস সেভ করুন</button>
+        </div>
+        <div class="admin-box amber">
+          <h4 style="color:#92400e">পুরনো HTML ফাইল ইমপোর্ট</h4>
+          <p style="margin:0 0 10px;font-size:14.5px;font-weight:600">আগের "seat_plan_system.html" ফাইল থেকে কক্ষ ও শিক্ষার্থী নতুন প্ল্যান হিসেবে যোগ হবে।</p>
+          <input type="file" id="fileOld" accept=".html,.htm" hidden>
+          <button class="btn btn-sm" id="btnImportOld" type="button" style="width:100%">📂 HTML ফাইল বেছে নিন</button>
+        </div>
+        <div class="admin-box">
+          <h4>ব্যাকআপ</h4>
+          <input type="file" id="fileBackup" accept=".json" hidden>
+          <div class="ctrl-group">
+            <button class="btn btn-sm" id="btnBackup" type="button">⬇ ব্যাকআপ ডাউনলোড</button>
+            <button class="btn btn-sm" id="btnRestore" type="button">⬆ ব্যাকআপ থেকে ফেরত</button>
+          </div>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <div id="rooms"></div>
+</main>
+
+<footer class="site-footer"><a href="index.html">← শিক্ষার্থীদের পাতা</a></footer>
+
+<script src="assets/config.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/admin.js"></script>
+</body>
+</html>

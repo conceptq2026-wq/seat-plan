@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>পরীক্ষার আসনবিন্যাস</title>
+<meta name="description" content="রোল নম্বর দিয়ে পরীক্ষার আসন খুঁজুন">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="header-top">
+      <div>
+        <h1 class="school-title"><span id="schoolName">আসনবিন্যাস</span><span class="est-badge" id="estBadge" hidden></span></h1>
+        <div class="school-subtitle" id="planTitle">লোড হচ্ছে…</div>
+        <div class="plan-picker" id="planPickerBox" hidden>
+          <select id="planPicker" aria-label="পরীক্ষা বেছে নিন"></select>
+        </div>
+      </div>
+      <div class="shift-tabs" id="sessionTabs"></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="search-card" id="searchCard" hidden>
+    <div class="search-title">🔍 পরীক্ষার্থীর তথ্য দিয়ে সরাসরি আসন খুঁজুন</div>
+    <form class="search-grid" id="searchForm" autocomplete="off">
+      <div class="field"><label for="srcCls">শ্রেণি</label><select id="srcCls"></select></div>
+      <div class="field"><label for="srcSec">শাখা</label><select id="srcSec"></select></div>
+      <div class="field"><label for="srcShift">শিফট</label><select id="srcShift"></select></div>
+      <div class="field"><label for="srcDept">বিভাগ (যদি থাকে)</label><select id="srcDept"></select></div>
+      <div class="field"><label for="srcRoll">রোল নম্বর</label><input type="text" id="srcRoll" inputmode="numeric" placeholder="যেমন: ০৫"></div>
+      <div class="field"><button class="btn btn-search" type="submit">আসন খুঁজুন</button></div>
+    </form>
+    <div id="searchResult" class="search-result-box" hidden></div>
+  </section>
+
+  <div class="ctrl-bar">
+    <div class="ctrl-group"><span class="pill" id="sessionInfo"></span></div>
+    <div class="ctrl-group"><button class="btn" type="button" onclick="window.print()">🖨️ প্রিন্ট করুন</button></div>
+  </div>
+
+  <div id="rooms"></div>
+</main>
+
+<footer class="site-footer">
+  <a href="admin.html">এডমিন</a>
+</footer>
+
+<script src="assets/config.js"></script>
+<script src="assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  let data, plan, sessionId, highlight = null;
+  const $ = id => document.getElementById(id);
+
+  async function start() {
+    try {
+      data = await SP.loadPublicData();
+    } catch (e) {
+      $('planTitle').textContent = '';
+      $('rooms').innerHTML = `<div class="empty-state">ডেটা লোড করা যায়নি। একটু পরে আবার চেষ্টা করুন।<br><small>${SP.esc(e.message)}</small></div>`;
+      return;
+    }
+    const s = data.settings;
+    $('schoolName').textContent = s.schoolName;
+    document.title = 'পরীক্ষার আসনবিন্যাস - ' + s.schoolName;
+    if (s.established) { $('estBadge').textContent = 'স্থাপিত: ' + s.established; $('estBadge').hidden = false; }
+
+    const plans = data.plans.filter(p => p.published);
+    if (!plans.length) {
+      $('planTitle').textContent = '';
+      $('rooms').innerHTML = '<div class="empty-state">এখনো কোনো আসনবিন্যাস প্রকাশ করা হয়নি।</div>';
+      return;
+    }
+    // URL-এ ?plan=… থাকলে সেটি, নাহলে তালিকার প্রথমটি
+    const want = new URLSearchParams(location.search).get('plan');
+    plan = plans.find(p => p.id === want) || plans[0];
+    if (plans.length > 1) {
+      $('planPicker').innerHTML = plans.map(p => `<option value="${SP.esc(p.id)}"${p === plan ? ' selected' : ''}>${SP.esc(p.title)}</option>`).join('');
+      $('planPickerBox').hidden = false;
+      $('planPicker').onchange = () => { plan = plans.find(p => p.id === $('planPicker').value); sessionId = null; $('searchResult').hidden = true; render(); };
+    }
+
+    $('srcCls').innerHTML = SP.optionsHtml(SP.CLASSES, '');
+    $('srcSec').innerHTML = SP.optionsHtml(SP.SECTIONS, SP.NA, true, true);
+    $('srcShift').innerHTML = SP.optionsHtml(SP.SHIFT_OPTS, SP.NA, true, true);
+    $('srcDept').innerHTML = SP.optionsHtml(SP.DEPTS, SP.NA, true, true);
+    $('searchCard').hidden = false;
+    $('searchForm').onsubmit = e => { e.preventDefault(); search(); };
+    $('searchResult').addEventListener('click', e => {
+      const b = e.target.closest('[data-show]');
+      if (!b) return;
+      const [sid, rid, key] = b.dataset.show.split('|');
+      showSeat(sid, rid, key);
+    });
+    $('sessionTabs').addEventListener('click', e => {
+      const b = e.target.closest('[data-session]');
+      if (b) { sessionId = b.dataset.session; highlight = null; render(); }
+    });
+    render();
+  }
+
+  function render() {
+    $('planTitle').textContent = plan.title;
+    if (!plan.sessions.find(se => se.id === sessionId)) {
+      const firstWithRooms = plan.sessions.find(se => se.rooms.length);
+      sessionId = (firstWithRooms || plan.sessions[0] || {}).id;
+    }
+    $('sessionTabs').innerHTML = SP.sessionTabsHtml(plan, sessionId);
+    const se = plan.sessions.find(x => x.id === sessionId);
+    if (!se || !se.rooms.length) {
+      $('sessionInfo').textContent = se ? `${se.name}: কোনো কক্ষ নেই` : '';
+      $('rooms').innerHTML = '<div class="empty-state">এই সেশনে কোনো কক্ষের তথ্য নেই।</div>';
+      return;
+    }
+    $('sessionInfo').textContent = `${se.icon || ''} ${se.name} — মোট কক্ষ: ${SP.bn(se.rooms.length)}টি`;
+    const printHead = SP.printHead(data.settings, plan, se);
+    $('rooms').innerHTML = se.rooms.map(r => SP.renderRoom(r, {
+      colors: data.settings.classColors, printHead,
+      highlight: highlight && highlight.roomId === r.id ? highlight.key : null
+    })).join('');
+  }
+
+  function search() {
+    const q = { cls: $('srcCls').value, sec: $('srcSec').value, shiftOpt: $('srcShift').value, dept: $('srcDept').value, roll: $('srcRoll').value };
+    const box = $('searchResult');
+    box.hidden = false;
+    if (!q.roll.trim() || isNaN(SP.num(q.roll))) {
+      box.innerHTML = '<div class="result-header bad">⚠ রোল নম্বর লিখুন</div>';
+      return;
+    }
+    const found = SP.findSeats(plan, q);
+    if (!found.length) {
+      box.innerHTML = `<div class="result-header bad">❌ দুঃখিত, আসন পাওয়া যায়নি!</div>
+        <p style="margin:0;font-weight:700;color:#475569">সঠিক শ্রেণি ও রোল নম্বর দিয়ে আবার চেষ্টা করুন। শাখা/শিফট নিশ্চিত না হলে "প্রযোজ্য নয়" রাখুন।</p>`;
+      return;
+    }
+    const many = found.length > 1;
+    box.innerHTML = (many ? `<div class="result-header">একাধিক আসন মিলেছে (${SP.bn(found.length)}টি) — শাখা/শিফট বেছে নিলে সঠিকটি পাবেন</div>` : '<div class="result-header">🎉 আপনার আসন পাওয়া গেছে!</div>') +
+      found.map(f => `
+        <div class="result-block">
+          <div class="result-details">
+            <div class="result-item"><span>পরীক্ষার সেশন</span><strong>${SP.esc(f.session.icon || '')} ${SP.esc(f.session.name)}</strong></div>
+            ${f.session.time ? `<div class="result-item"><span>সময়</span><strong>${SP.esc(f.session.time)}</strong></div>` : ''}
+            <div class="result-item"><span>কক্ষ নম্বর</span><strong>কক্ষ ${SP.bn(SP.esc(f.room.no))}</strong></div>
+            ${f.room.floor ? `<div class="result-item"><span>তলা/অবস্থান</span><strong>${SP.esc(f.room.floor)}</strong></div>` : ''}
+            <div class="result-item"><span>বেঞ্চ</span><strong>${f.side === 'L' ? 'বাম' : 'ডান'} সারি, বেঞ্চ নম্বর ${SP.bn(f.bench)}</strong></div>
+            <div class="result-item"><span>সিটের স্থান</span><strong>${{ 'বাম': 'বাম পাশের আসন', 'ডান': 'ডান পাশের আসন', 'মাঝ': 'মাঝের আসন' }[f.pos] || 'একক আসন'}</strong></div>
+            <div class="result-item"><span>পরীক্ষার্থী</span><strong>${SP.esc(SP.groupLabel(f.seat))} | রোল: ${SP.bn(SP.esc(f.seat.roll))}</strong></div>
+          </div>
+          <div class="result-actions"><button class="btn btn-primary btn-sm" type="button" data-show="${SP.esc(f.session.id)}|${SP.esc(f.room.id)}|${f.key}">📍 চার্টে আসনটি দেখুন</button></div>
+        </div>`).join('');
+  }
+
+  function showSeat(sid, rid, key) {
+    sessionId = sid;
+    highlight = { roomId: rid, key };
+    render();
+    const cell = document.querySelector(`#room-${CSS.escape(rid)} [data-seat="${key}"]`);
+    if (cell) cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
