@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#102a6b">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@700&display=swap" rel="stylesheet">
+<link rel="preload" href="assets/fonts/Kalpurush.woff" as="font" type="font/woff" crossorigin>
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -21,7 +22,7 @@
       <div class="brand">
         <img class="school-logo" id="logo" src="assets/logo.jpg" alt="বিদ্যালয়ের লোগো" width="84" height="84">
         <div>
-          <h1 class="school-title"><span id="schoolName">আসনবিন্যাস</span><span class="est-badge" id="estBadge" hidden></span></h1>
+          <h1 class="school-title"><span id="schoolName">আসনবিন্যাস</span></h1>
           <div class="school-subtitle" id="planTitle">লোড হচ্ছে…</div>
           <div class="plan-picker" id="planPickerBox" hidden>
             <select id="planPicker" aria-label="পরীক্ষা বেছে নিন"></select>
@@ -95,7 +96,6 @@
     const s = data.settings;
     $('schoolName').textContent = s.schoolName;
     document.title = 'পরীক্ষার আসনবিন্যাস - ' + s.schoolName;
-    if (s.established) { $('estBadge').textContent = 'স্থাপিত ' + s.established; $('estBadge').hidden = false; }
 
     plans = data.plans.filter(p => p.published);
     if (!plans.length) {
@@ -260,13 +260,13 @@
   }
 
   async function ticketCanvas(f) {
-    try { await Promise.all(['500 30px "Hind Siliguri"', '700 60px "Hind Siliguri"', '700 40px "Noto Serif Bengali"'].map(q => document.fonts.load(q, 'আসন'))); } catch (e) { /* ignore */ }
+    try { await Promise.all(['400 30px "Kalpurush"', '700 40px "Noto Serif Bengali"'].map(q => document.fonts.load(q, 'আসন'))); } catch (e) { /* ignore */ }
     const W = 1080, H = 1350;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const x = c.getContext('2d');
     const BLUE = '#102a6b', BLUE7 = '#1f45a8', GOLD = '#f4b400', PAPER = '#f6f9fd', WATER = '#eaf2fd', INK = '#14213d', MUTED = '#5b6785';
-    const HS = '"Hind Siliguri", "Nirmala UI", sans-serif', SERIF = '"Noto Serif Bengali", "Nirmala UI", serif';
+    const HS = '"Kalpurush", "Nirmala UI", sans-serif', SERIF = '"Noto Serif Bengali", "Nirmala UI", serif';
 
     x.fillStyle = PAPER; x.fillRect(0, 0, W, H);
     x.fillStyle = BLUE; x.fillRect(0, 0, W, 360);

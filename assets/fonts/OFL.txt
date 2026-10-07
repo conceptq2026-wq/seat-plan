@@ -1,0 +1,7 @@
+Kalpurush (Version 0.258)
+Designed by Md. Tanbin Islam Siyam, developed under the Avro Font Development Project (OmicronLab).
+http://www.omicronlab.com  —  https://github.com/potasiyam/Kalpurush
+
+This Font Software is licensed under the SIL Open Font License, Version 1.0.
+The full license text is available at http://scripts.sil.org/OFL
+The font file here is the original font, only repackaged in the WOFF web format (no changes to glyphs or metadata).

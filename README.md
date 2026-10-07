@@ -75,5 +75,6 @@ assets/admin.js     এডমিনের কাজ ও GitHub-এ প্রক�
 assets/config.js    (ঐচ্ছিক) নিজস্ব ডোমেইনের জন্য রিপোর নাম
 assets/logo.jpg     বিদ্যালয়ের লোগো (হেডার, প্রিন্ট ও Word ফাইলে)
 assets/favicon.png  ব্রাউজার ট্যাবের আইকন
+assets/fonts/       কালপুরুষ ফন্ট (SIL Open Font License, OFL.txt দেখুন)
 data/plans.json     সব সিট প্ল্যানের ডেটা
 ```
