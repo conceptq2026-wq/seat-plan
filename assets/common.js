@@ -17,6 +17,8 @@
     return parseInt(String(v).trim().replace(/[০-৯]/g, d => BN.indexOf(d)), 10);
   };
   SP.esc = s => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  /** ডাউনলোডের ফাইল-নামে বাংলা অক্ষর বাদ পড়ে যায়, তাই ইংরেজি অক্ষরে রূপান্তর */
+  SP.asciiName = s => String(s).replace(/[০-৯]/g, d => BN.indexOf(d)).replace(/[^A-Za-z0-9-]+/g, '_').replace(/^_+|_+$/g, '') || 'room';
   SP.uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   SP.clone = o => JSON.parse(JSON.stringify(o));
 
@@ -152,7 +154,7 @@
   SP.roomStats = room => {
     const keys = SP.allKeys(room);
     let assigned = 0, blocked = 0;
-    const groups = {};
+    const groups = {}, groupCls = {};
     keys.forEach(k => {
       const s = room.seats[k];
       if (SP.isBlocked(s)) blocked++;
@@ -160,9 +162,10 @@
         assigned++;
         const g = SP.groupLabel(s);
         (groups[g] = groups[g] || []).push(SP.num(s.roll));
+        groupCls[g] = s.cls;
       }
     });
-    return { capacity: keys.length, assigned, blocked, empty: keys.length - assigned - blocked, groups };
+    return { capacity: keys.length, assigned, blocked, empty: keys.length - assigned - blocked, groups, groupCls };
   };
 
   /* ---------- কক্ষ আঁকা ---------- */
@@ -198,15 +201,59 @@
     return h + '</tbody></table>';
   }
 
+  /** ফোনের জন্য ছোট নকশা: প্রতিটি আসনে শুধু রোল, রং শ্রেণি অনুযায়ী */
+  function miniHtml(room, opts) {
+    const side = (sd, n) => {
+      if (!n) return '';
+      let h = `<div class="mini-side"><div class="mini-label">${sd === 'L' ? 'বাম সারি' : 'ডান সারি'}</div>`;
+      for (let b = 1; b <= n; b++) {
+        h += `<div class="mini-bench"><span class="mini-no">${SP.bn(SP.chartBench(room, sd, b))}</span>`;
+        for (let c = 1; c <= room.cap; c++) {
+          const key = SP.seatKey(sd, b, c);
+          const s = room.seats[key];
+          const found = opts.highlight === key ? ' found' : '';
+          if (SP.isBlocked(s)) h += `<span class="mini-seat blocked${found}" title="ব্লক">✕</span>`;
+          else if (SP.isStudent(s)) {
+            const col = opts.colors[s.cls] ? ` style="background:${SP.esc(opts.colors[s.cls])}"` : '';
+            h += `<span class="mini-seat${found}"${col} data-seat="${key}" title="${SP.esc(SP.groupLabel(s))}, রোল ${SP.esc(SP.bn(s.roll))}">${SP.bn(SP.esc(s.roll))}</span>`;
+          } else h += `<span class="mini-seat${found}"></span>`;
+        }
+        h += '</div>';
+      }
+      return h + '</div>';
+    };
+    const aisle = room.left && room.right ? '<div class="mini-aisle"></div>' : '';
+    return `<div class="room-mini">${side('L', room.left)}${aisle}${side('R', room.right)}</div>
+      <div class="mini-note">ঘরে রোল নম্বর দেখানো হয়েছে। <button type="button" data-full>পূর্ণ চার্ট দেখুন</button></div>`;
+  }
+
+  /** টিকিটের জন্য খুব ছোট নকশা, শুধু নিজের আসনটি জ্বলজ্বলে */
+  SP.mapetteHtml = function (room, key) {
+    const hit = SP.parseKey(key);
+    const side = (sd, n) => {
+      if (!n) return '';
+      let h = '<div class="mapette-side">';
+      for (let b = 1; b <= n; b++) {
+        const isRow = hit && hit.side === sd && hit.bench === b;
+        h += `<div class="mapette-row${isRow ? ' hit' : ''}">${sd === 'L' ? `<em>${SP.bn(b)}</em>` : ''}`;
+        for (let c = 1; c <= room.cap; c++) h += `<i${isRow && hit.c === c ? ' class="on"' : ''}></i>`;
+        h += `${sd === 'R' ? `<em style="text-align:left;margin:0 0 0 2px">${SP.bn(room.left + b)}</em>` : ''}</div>`;
+      }
+      return h + '</div>';
+    };
+    return `<div class="mapette" aria-hidden="true">${side('L', room.left)}${room.left && room.right ? '<div class="mapette-aisle"></div>' : ''}${side('R', room.right)}</div>`;
+  };
+
   /**
-   * opts: { admin, colors, highlight (seat key), printHead (string html), actionsHtml }
+   * opts: { admin, colors, highlight (seat key), printHead (string html), actionsHtml, mini }
    */
   SP.renderRoom = function (room, opts) {
     const st = SP.roomStats(room);
     const chips = Object.keys(st.groups).map(g => {
       const r = st.groups[g].sort((a, b) => a - b);
       const range = r[0] === r[r.length - 1] ? SP.bn(r[0]) : `${SP.bn(r[0])}-${SP.bn(r[r.length - 1])}`;
-      return `<span class="summary-chip">${SP.esc(g)}, রোল রেঞ্জ: ${range} = <b>${SP.bn(r.length)}</b> জন</span>`;
+      const col = opts.colors[st.groupCls[g]];
+      return `<span class="summary-chip">${col ? `<i class="dot" style="background:${SP.esc(col)}"></i>` : ''}${SP.esc(g)}, রোল ${range} <b>${SP.bn(r.length)}</b> জন</span>`;
     }).join(' ') || '<span class="summary-chip neutral">কোন শিক্ষার্থী বরাদ্দ নেই</span>';
 
     const leftSide = room.left > 0 ? `
@@ -222,7 +269,7 @@
     const aisle = room.left > 0 && room.right > 0 ? '<div class="classroom-aisle"><span class="aisle-text">চলাচলের রাস্তা</span></div>' : '';
 
     return `
-      <article class="room-card" id="room-${SP.esc(room.id)}" data-room="${SP.esc(room.id)}">
+      <article class="room-card${opts.mini ? ' has-mini' : ''}" id="room-${SP.esc(room.id)}" data-room="${SP.esc(room.id)}">
         <header class="room-header">
           ${opts.printHead ? `<div class="print-head">${opts.printHead}</div>` : ''}
           <div class="room-top-bar">
@@ -247,6 +294,7 @@
           </div>
         </header>
         <div class="classroom-scroll"><div class="classroom-grid-wrapper">${leftSide}${aisle}${rightSide}</div></div>
+        ${opts.mini ? miniHtml(room, opts) : ''}
       </article>`;
   };
 

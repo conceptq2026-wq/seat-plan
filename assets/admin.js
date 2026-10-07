@@ -578,7 +578,7 @@
 <h2 style="text-align:center;margin:0">${SP.esc(s.schoolName)}${s.established ? ` (স্থাপিত: ${SP.esc(s.established)})` : ''}</h2>
 <h3 style="text-align:center;margin:4px 0">${SP.esc(plan.title)} — ${SP.esc(se.name)}${se.time ? ` (${SP.esc(se.time)})` : ''}</h3>
 <hr>${clone.innerHTML}</body></html>`;
-    download(`Seat_Plan_Room_${String(room.no).replace(/[^\wঀ-৿-]+/g, '_')}.doc`, '﻿' + html, 'application/msword');
+    download(`Seat_Plan_Room_${SP.asciiName(room.no)}.doc`, '﻿' + html, 'application/msword');
   }
 
   function download(name, text, type) {
