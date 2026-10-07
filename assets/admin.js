@@ -1076,11 +1076,29 @@
     return out;
   }
 
+  /**
+   * রোল + বাদ: "১-১০০" আর "২৩, ৪৭, ৬৩", অথবা একই ঘরে "১-১০০ বাদে ২৩, ৪৭, ৬৩"
+   * → { rolls, excluded (যা সত্যিই বাদ গেল), notInRange (রেঞ্জে ছিল না) }
+   */
+  function parseRollSpec(incStr, excStr) {
+    let inc = String(incStr || ''), exc = String(excStr || '');
+    const parts = inc.split(/\s*(?:বাদে|বাদ\s*দিয়ে|বাদ|except|without)\s*[:：]?\s*/i);
+    if (parts.length > 1) { inc = parts[0]; exc = [parts.slice(1).join(','), exc].filter(x => x.trim()).join(','); }
+    const rolls = parseRolls(inc);
+    let ex = [];
+    if (exc.replace(/[,،;\s]/g, '')) {
+      try { ex = parseRolls(exc); } catch (e) { throw err('বাদের ঘর: ' + e.message); }
+    }
+    const exSet = new Set(ex), inSet = new Set(rolls);
+    return { rolls: rolls.filter(r => !exSet.has(r)), excluded: ex.filter(r => inSet.has(r)), notInRange: ex.filter(r => !inSet.has(r)) };
+  }
+
   function autoAssign() {
     const room = findRoom($('aRoom').value);
     if (!room) return SP.toast('আগে একটি কক্ষ যোগ করুন।', 'bad');
-    let rolls;
-    try { rolls = parseRolls($('aRolls').value); } catch (e) { return SP.toast(e.message, 'bad'); }
+    let rolls, spec;
+    try { spec = parseRollSpec($('aRolls').value, $('aExclude').value); rolls = spec.rolls; } catch (e) { return SP.toast(e.message, 'bad'); }
+    if (!rolls.length) return SP.toast('সব রোলই বাদ পড়েছে। রোল বা বাদের ঘর দেখুন।', 'bad');
     const total = room.left + room.right;
     let from = 1, to = total;
     const bs = $('aBenches').value.trim();
@@ -1117,10 +1135,13 @@
     if (placed.length) commit(() => placed.forEach((r, i) => { room.seats[free[i]] = Object.assign({}, base, { roll: r }); }));
 
     const fmt = arr => arr.length > 12 ? arr.slice(0, 12).map(SP.bn).join(', ') + ' …' : arr.map(SP.bn).join(', ');
-    if (!already.length && !left.length) return SP.toast(`✔ মোট ${SP.bn(placed.length)} জন শিক্ষার্থীকে আসন দেওয়া হয়েছে।`, 'ok');
+    const exNote = spec.excluded.length ? ` (বাদ রাখা হয়েছে: ${fmt(spec.excluded)})` : '';
+    if (!already.length && !left.length && !spec.notInRange.length) return SP.toast(`✔ মোট ${SP.bn(placed.length)} জন শিক্ষার্থীকে আসন দেওয়া হয়েছে${exNote}।`, 'ok', 5000);
     modal({
       title: 'আসন বণ্টনের ফলাফল',
       body: `<p style="margin-top:0;font-weight:800">✔ আসন দেওয়া হয়েছে: ${SP.bn(placed.length)} জন</p>
+        ${spec.excluded.length ? `<div class="note">বাদ রাখা হয়েছে: রোল ${fmt(spec.excluded)}।</div>` : ''}
+        ${spec.notInRange.length ? `<div class="note warn">বাদের ঘরের রোল ${fmt(spec.notInRange)} রোলের রেঞ্জে ছিল না, তাই কিছু হয়নি। ঠিক লিখেছেন কিনা দেখুন।</div>` : ''}
         ${already.length ? `<div class="note">${SP.bn(already.length)} জন আগে থেকেই এই প্ল্যানে বসানো আছে, তাই বাদ দেওয়া হয়েছে (রোল: ${fmt(already)})।</div>` : ''}
         ${left.length ? `<div class="note warn">${SP.bn(left.length)} জনের জন্য নির্বাচিত বেঞ্চে ফাঁকা আসন পাওয়া যায়নি (রোল: ${fmt(left)})। অন্য কক্ষ বা বেঞ্চ বেছে আবার চালান।</div>` : ''}`,
       buttons: ['spacer', { label: 'ঠিক আছে', cls: 'btn-primary' }]
@@ -1225,7 +1246,7 @@
   function openDistribute() {
     const se = curSession();
     if (!se.rooms.length) return SP.toast('আগে এই সেশনে কক্ষ যোগ করুন।', 'bad');
-    let groups = [{ cls: $('aCls').value, sec: 'ক', shiftOpt: SP.NA, dept: SP.NA, rolls: '' }];
+    let groups = [{ cls: $('aCls').value, sec: 'ক', shiftOpt: SP.NA, dept: SP.NA, rolls: '', exclude: '' }];
 
     const groupRow = (g, i) => `
       <div class="dist-group" data-i="${i}">
@@ -1233,7 +1254,8 @@
         <select class="inp" data-f="sec" aria-label="শাখা">${SP.optionsHtml(SP.SECTIONS, g.sec, true)}</select>
         <select class="inp" data-f="shiftOpt" aria-label="শিফট">${SP.optionsHtml(SP.SHIFT_OPTS, g.shiftOpt, true)}</select>
         <select class="inp" data-f="dept" aria-label="বিভাগ">${SP.optionsHtml(SP.DEPTS, g.dept, true, true)}</select>
-        <input class="inp" data-f="rolls" value="${SP.esc(g.rolls)}" placeholder="রোল: ১-৬০, ৬৫" aria-label="রোল">
+        <input class="inp" data-f="rolls" value="${SP.esc(g.rolls)}" placeholder="রোল: ১-১০০" aria-label="রোল">
+        <input class="inp" data-f="exclude" value="${SP.esc(g.exclude || '')}" placeholder="বাদ: ২৩, ৪৭" aria-label="বাদ যাবে">
         <span class="dist-count" data-count></span>
         <button type="button" class="btn btn-xs btn-danger" data-rm title="এই সারি বাদ দিন">✕</button>
       </div>`;
@@ -1244,7 +1266,7 @@
       body: `
         <div class="dist-step">
           <h5>১. কোন শিক্ষার্থী</h5>
-          <div class="dist-head"><span>শ্রেণি</span><span>শাখা</span><span>শিফট</span><span>বিভাগ</span><span>রোল</span><span></span><span></span></div>
+          <div class="dist-head"><span>শ্রেণি</span><span>শাখা</span><span>শিফট</span><span>বিভাগ</span><span>রোল</span><span>বাদ যাবে</span><span></span><span></span></div>
           <div id="dGroups"></div>
           <div class="ctrl-group" style="margin-top:8px">
             <button class="btn btn-sm" type="button" id="dAdd">➕ আরেকটি শ্রেণি/শাখা</button>
@@ -1287,8 +1309,9 @@
     }
     function parsed() {
       return groups.map(g => {
-        if (!g.rolls.trim()) return { g, rolls: [], error: null };
-        try { return { g, rolls: parseRolls(g.rolls), error: null }; } catch (e) { return { g, rolls: [], error: e.message }; }
+        if (!g.rolls.trim()) return { g, rolls: [], excluded: [], notInRange: [], error: null };
+        try { return Object.assign({ g, error: null }, parseRollSpec(g.rolls, g.exclude)); }
+        catch (e) { return { g, rolls: [], excluded: [], notInRange: [], error: e.message }; }
       });
     }
     function selectedRooms() {
@@ -1302,9 +1325,10 @@
       bd.querySelectorAll('.dist-group').forEach((row, i) => {
         const c = row.querySelector('[data-count]');
         const p = ps[i];
-        c.textContent = p.error ? '⚠' : (p.rolls.length ? `${SP.bn(p.rolls.length)} জন` : '');
-        c.title = p.error || '';
-        c.classList.toggle('bad', !!p.error);
+        const warnRange = p.notInRange.length ? `বাদের ঘরের রোল ${p.notInRange.map(SP.bn).join(', ')} রেঞ্জে নেই` : '';
+        c.textContent = p.error ? '⚠' : (p.rolls.length ? `${SP.bn(p.rolls.length)} জন${warnRange ? ' ⚠' : ''}` : '');
+        c.title = p.error || warnRange || (p.excluded.length ? `${SP.bn(p.excluded.length)} জন বাদ` : '');
+        c.classList.toggle('bad', !!p.error || !!warnRange);
       });
       const total = ps.reduce((a, p) => a + p.rolls.length, 0);
       const free = selectedRooms().reduce((a, r) => a + slotsOf(r, pos).length, 0);
@@ -1325,14 +1349,14 @@
       if (e.target.closest('[data-rm]')) {
         sync();
         groups.splice(+e.target.closest('.dist-group').dataset.i, 1);
-        if (!groups.length) groups.push({ cls: $('aCls').value, sec: SP.NA, shiftOpt: SP.NA, dept: SP.NA, rolls: '' });
+        if (!groups.length) groups.push({ cls: $('aCls').value, sec: SP.NA, shiftOpt: SP.NA, dept: SP.NA, rolls: '', exclude: '' });
         drawGroups();
       }
     });
     $$('#dAdd').onclick = () => {
       sync();
       const last = groups[groups.length - 1] || {};
-      groups.push({ cls: last.cls || SP.CLASSES[0], sec: last.sec || SP.NA, shiftOpt: last.shiftOpt || SP.NA, dept: last.dept || SP.NA, rolls: '' });
+      groups.push({ cls: last.cls || SP.CLASSES[0], sec: last.sec || SP.NA, shiftOpt: last.shiftOpt || SP.NA, dept: last.dept || SP.NA, rolls: '', exclude: '' });
       drawGroups();
       const inputs = bd.querySelectorAll('.dist-group [data-f="rolls"]');
       inputs[inputs.length - 1].focus();
@@ -1347,7 +1371,7 @@
       const note = $$('#dFileNote');
       try {
         const res = await SP.importer.readStudents(f, groups[0] && groups[0].cls);
-        const gs = SP.importer.groupRows(res.rows).map(g => ({ cls: g.cls, sec: g.sec, shiftOpt: g.shiftOpt, dept: g.dept, rolls: SP.importer.rangeText(g.rolls) }));
+        const gs = SP.importer.groupRows(res.rows).map(g => ({ cls: g.cls, sec: g.sec, shiftOpt: g.shiftOpt, dept: g.dept, rolls: SP.importer.rangeText(g.rolls), exclude: '' }));
         groups = groups.filter(g => g.rolls.trim()).concat(gs);
         drawGroups();
         note.innerHTML = `<div class="note" style="margin:10px 0 0">✔ "${SP.esc(f.name)}" থেকে ${SP.bn(res.rows.length)} জন শিক্ষার্থী, ${SP.bn(gs.length)}টি দল পাওয়া গেছে।${res.ignoredName ? ' নামের কলাম বাদ দেওয়া হয়েছে (নাম ওয়েবসাইটে যাবে না)।' : ''}</div>` +
@@ -1377,7 +1401,7 @@
         const base = { cls: p.g.cls, sec: p.g.sec, shiftOpt: p.g.shiftOpt, dept: p.g.dept };
         let list = p.rolls.filter(r => { const s = whereSeated(Object.assign({ roll: r }, base)); if (s) already++; return !s; });
         if (random) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
-        return { base, list, label: SP.groupLabel(base) };
+        return { base, list, label: SP.groupLabel(base), excluded: p.excluded, notInRange: p.notInRange };
       });
       const G = queues.length;
       const report = [];
@@ -1414,6 +1438,8 @@
         width: 640,
         body: `<p style="margin-top:0;font-weight:700">✔ ${SP.bn(placed)} জন শিক্ষার্থী ${SP.bn(report.length)}টি কক্ষে বসানো হয়েছে।</p>
           <div class="dist-report">${report.map(r => `<div><b>কক্ষ ${SP.bn(SP.esc(r.room.no))}</b>: ${[...r.got].map(([lab, rolls]) => `${SP.esc(lab)}, রোল ${SP.importer.rangeText(rolls)} (${SP.bn(rolls.length)} জন)`).join('; ')}</div>`).join('')}</div>
+          ${queues.some(q => q.excluded.length) ? `<div class="note" style="margin-top:12px">বাদ রাখা হয়েছে: ${queues.filter(q => q.excluded.length).map(q => `${SP.esc(q.label)}, রোল ${SP.importer.rangeText(q.excluded)}`).join('; ')}।</div>` : ''}
+          ${queues.some(q => q.notInRange.length) ? `<div class="note warn" style="margin-top:8px">বাদের ঘরের এই রোলগুলো রেঞ্জে ছিল না: ${queues.filter(q => q.notInRange.length).map(q => `${SP.esc(q.label)}, রোল ${SP.importer.rangeText(q.notInRange)}`).join('; ')}।</div>` : ''}
           ${already ? `<div class="note" style="margin-top:12px">${SP.bn(already)} জন আগে থেকেই এই প্ল্যানে বসানো আছে, তাই বাদ দেওয়া হয়েছে।</div>` : ''}
           ${left.length ? `<div class="note warn" style="margin-top:8px">আসন পাওয়া যায়নি: ${left.map(q => `${SP.esc(q.label)}, রোল ${SP.importer.rangeText(q.list)}`).join('; ')}। আরও কক্ষ যোগ করে আবার "বণ্টন" চালান, শুধু বাকিরা বসবে।</div>` : ''}
           <p class="hint" style="font-size:14px;color:var(--muted)">ভুল হলে ওপরের ↺ Undo চাপলে পুরো বণ্টন ফিরে যাবে।</p>`,

@@ -292,7 +292,7 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
 .inp:focus { outline: none; border-color: var(--blue-700); box-shadow: 0 0 0 3px rgba(31,69,168,0.18); }
 .dist-step { margin-bottom: 18px; }
 .dist-step h5 { margin: 0 0 8px; font-size: 16.5px; color: var(--blue-900); display: flex; align-items: center; flex-wrap: wrap; }
-.dist-head, .dist-group { display: grid; grid-template-columns: 1fr 0.9fr 1fr 1.1fr 1.7fr 62px 30px; gap: 6px; align-items: center; }
+.dist-head, .dist-group { display: grid; grid-template-columns: 1fr 0.8fr 0.95fr 1.05fr 1.4fr 1.1fr 70px 30px; gap: 6px; align-items: center; }
 .dist-head { font-size: 13.5px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
 .dist-group { margin-bottom: 6px; }
 .dist-count { font-size: 14px; color: var(--muted); text-align: right; white-space: nowrap; }
@@ -422,7 +422,7 @@ body.locked > :not(.login-screen):not(.toast-box) { display: none !important; }
   .room-filter { min-width: 0; flex: 1; }
   .dist-head { display: none; }
   .dist-group { grid-template-columns: 1fr 1fr; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
-  .dist-group [data-f="rolls"] { grid-column: 1 / -1; }
+  .dist-group [data-f="rolls"], .dist-group [data-f="exclude"] { grid-column: 1 / -1; }
   .lib-row { grid-template-columns: auto 1fr auto; }
   .lib-row span { grid-column: 2 / -1; grid-row: 2; }
 }
