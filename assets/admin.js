@@ -167,6 +167,13 @@
     $('aCls').innerHTML = SP.optionsHtml(SP.CLASSES, '');
   }
 
+  /** শিক্ষার্থীর পাতা শুরুতে যে পরীক্ষা খোলে: এডমিনের বেছে দেওয়াটি, নাহলে তালিকার প্রথম প্রকাশিতটি */
+  function effectiveDefault() {
+    const pub = data.plans.filter(p => p.published);
+    return pub.find(p => p.id === data.settings.defaultPlanId) || pub[0] || null;
+  }
+  const countPublished = () => data.plans.filter(p => p.published).length;
+
   /* ================= পরিবর্তন সংরক্ষণ ================= */
   function commit(fn) {
     const before = JSON.stringify(data);
@@ -207,7 +214,13 @@
     $('planTitleHead').textContent = plan.title + (plan.published ? '' : ' (শিক্ষার্থীদের কাছে লুকানো)');
     $('sessionTabs').innerHTML = SP.sessionTabsHtml(plan, sessionId, '<button class="shift-btn add" id="btnAddSession" type="button" title="নতুন সেশন">➕ সেশন</button>');
 
-    $('planSelect').innerHTML = data.plans.map(p => `<option value="${SP.esc(p.id)}"${p.id === planId ? ' selected' : ''}>${p.published ? '🟢' : '⚪'} ${SP.esc(p.title)}</option>`).join('');
+    const startPlan = effectiveDefault();
+    $('planSelect').innerHTML = data.plans.map(p => `<option value="${SP.esc(p.id)}"${p.id === planId ? ' selected' : ''}>${p.published ? '🟢' : '⚪'} ${SP.esc(p.title)}${p === startPlan && countPublished() > 1 ? ' ⭐' : ''}</option>`).join('');
+    // একাধিক পরীক্ষা প্রকাশিত থাকলে কোনটি শুরুতে খুলবে
+    $('defaultBox').hidden = !plan.published || countPublished() < 2;
+    $('defaultSlot').innerHTML = plan === startPlan
+      ? '<span class="pill ok">⭐ শিক্ষার্থীরা শুরুতে এটি দেখবে</span>'
+      : '<button class="btn btn-sm" type="button" id="btnMakeDefault">⭐ শুরুতে এটি দেখান</button>';
     if (document.activeElement !== $('planTitle')) $('planTitle').value = plan.title;
     $('planPublished').checked = plan.published;
 
@@ -427,6 +440,7 @@
     if (!confirm(`"${plan.title}" সিট প্ল্যানটি সম্পূর্ণ মুছে ফেলবেন?`)) return;
     commit(() => {
       data.plans = data.plans.filter(p => p.id !== plan.id);
+      if (data.settings.defaultPlanId === plan.id) delete data.settings.defaultPlanId;
       if (!data.plans.length) data.plans.push(SP.newPlan('নতুন পরীক্ষা'));
       planId = data.plans[0].id;
       sessionId = null;
@@ -825,6 +839,11 @@
       commit(() => { curPlan().published = on; });
       SP.toast(on ? 'প্রকাশ করার পর এই প্ল্যান শিক্ষার্থীরা দেখতে পাবে।' : 'এই প্ল্যান শিক্ষার্থীদের কাছে লুকানো থাকবে।');
     };
+    $('defaultSlot').addEventListener('click', e => {
+      if (!e.target.closest('#btnMakeDefault')) return;
+      commit(() => { data.settings.defaultPlanId = planId; });
+      SP.toast('প্রকাশ করার পর শিক্ষার্থীরা শুরুতে এই পরীক্ষাটি দেখবে।', 'ok');
+    });
     $('btnNewPlan').onclick = openNewPlan;
     $('btnDeletePlan').onclick = deletePlan;
 

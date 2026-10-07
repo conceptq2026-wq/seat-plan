@@ -24,9 +24,6 @@
         <div>
           <h1 class="school-title"><span id="schoolName">আসনবিন্যাস</span></h1>
           <div class="school-subtitle" id="planTitle">লোড হচ্ছে…</div>
-          <div class="plan-picker" id="planPickerBox" hidden>
-            <select id="planPicker" aria-label="পরীক্ষা বেছে নিন"></select>
-          </div>
         </div>
       </div>
     </div>
@@ -39,8 +36,9 @@
 
 <main class="wrap narrow">
   <section class="finder" id="finder" hidden>
+    <div class="exam-switch" id="examSwitch" role="group" aria-label="পরীক্ষা" hidden></div>
     <h2>আপনার আসন কোথায়?</h2>
-    <p class="lead">শ্রেণি আর রোল নম্বর দিলেই কক্ষ, বেঞ্চ ও আসন দেখাবে।</p>
+    <p class="lead" id="finderLead">শ্রেণি আর রোল নম্বর দিলেই কক্ষ, বেঞ্চ ও আসন দেখাবে।</p>
     <form id="searchForm" autocomplete="off">
       <div class="finder-row">
         <div class="field"><label for="srcCls">শ্রেণি</label><select id="srcCls"></select></div>
@@ -104,11 +102,18 @@
       return;
     }
     const params = new URLSearchParams(location.search);
-    plan = plans.find(p => p.id === params.get('plan')) || plans[0];
+    // শুরুতে: লিংকে দেওয়া পরীক্ষা → এডমিনের বেছে দেওয়া পরীক্ষা → তালিকার প্রথমটি
+    plan = plans.find(p => p.id === params.get('plan')) || plans.find(p => p.id === data.settings.defaultPlanId) || plans[0];
     if (plans.length > 1) {
-      $('planPicker').innerHTML = plans.map(p => `<option value="${SP.esc(p.id)}"${p === plan ? ' selected' : ''}>${SP.esc(p.title)}</option>`).join('');
-      $('planPickerBox').hidden = false;
-      $('planPicker').onchange = () => { plan = plans.find(p => p.id === $('planPicker').value); sessionId = null; highlight = null; $('searchResult').hidden = true; render(); };
+      $('examSwitch').hidden = false;
+      $('finderLead').textContent = 'শ্রেণি আর রোল নম্বর দিলেই সব পরীক্ষা থেকে খুঁজে কক্ষ, বেঞ্চ ও আসন দেখাবে।';
+      $('examSwitch').addEventListener('click', e => {
+        const b = e.target.closest('[data-plan]');
+        if (!b || b.dataset.plan === plan.id) return;
+        plan = plans.find(p => p.id === b.dataset.plan);
+        sessionId = null; highlight = null;
+        render();
+      });
     }
 
     $('srcCls').innerHTML = SP.optionsHtml(SP.CLASSES, '');
@@ -151,7 +156,11 @@
   }
 
   function render() {
-    $('planTitle').textContent = plan.title;
+    $('planTitle').textContent = plans.length > 1 ? 'পরীক্ষার আসনবিন্যাস' : plan.title;
+    if (plans.length > 1) {
+      $('examSwitch').innerHTML = '<span class="exam-label">পরীক্ষা</span>' + plans.map(p =>
+        `<button type="button" class="exam-btn${p === plan ? ' active' : ''}" data-plan="${SP.esc(p.id)}" aria-pressed="${p === plan}">${SP.esc(p.title)}</button>`).join('');
+    }
     if (!plan.sessions.find(se => se.id === sessionId)) {
       const withRooms = plan.sessions.find(se => se.rooms.length);
       sessionId = (withRooms || plan.sessions[0] || {}).id;
@@ -187,18 +196,23 @@
       $('srcRoll').focus();
       return;
     }
-    lastFound = SP.findSeats(plan, q);
+    lastFound = [plan].concat(plans.filter(p => p !== plan))
+      .flatMap(p => SP.findSeats(p, q).map(f => Object.assign(f, { plan: p })));
     if (!lastFound.length) {
-      box.innerHTML = `<div class="result-msg bad">${SP.esc(q.cls)} শ্রেণির রোল ${SP.bn(SP.esc(q.roll))}-এর আসন এই পরীক্ষায় পাওয়া যায়নি।
+      box.innerHTML = `<div class="result-msg bad">${SP.esc(q.cls)} শ্রেণির রোল ${SP.bn(SP.esc(q.roll))}-এর আসন ${plans.length > 1 ? 'কোনো প্রকাশিত পরীক্ষায়' : 'এই পরীক্ষায়'} পাওয়া যায়নি।
         <p>শ্রেণি ও রোল আবার মিলিয়ে দেখুন। শাখা বা শিফট দিয়ে থাকলে সেগুলো "প্রযোজ্য নয়" করে চেষ্টা করুন।</p></div>`;
       return;
     }
     const canShare = !!(navigator.share);
-    box.innerHTML = (lastFound.length > 1
-      ? `<div class="result-msg" style="margin-bottom:14px">এই রোলে ${SP.bn(lastFound.length)}টি আসন মিলেছে। "আরও তথ্য" থেকে শাখা বা শিফট দিলে শুধু আপনারটি দেখাবে।</div>` : '') +
+    const examCount = new Set(lastFound.map(f => f.plan)).size;
+    const sameExamDup = lastFound.length > examCount;
+    box.innerHTML = (sameExamDup
+      ? `<div class="result-msg" style="margin-bottom:14px">এই রোলে ${SP.bn(lastFound.length)}টি আসন মিলেছে। "আরও তথ্য" থেকে শাখা বা শিফট দিলে শুধু আপনারটি দেখাবে।</div>`
+      : examCount > 1 ? `<div class="result-msg" style="margin-bottom:14px">${SP.bn(examCount)}টি পরীক্ষায় আপনার আসন আছে। প্রতিটি টিকিটের ওপরে পরীক্ষার নাম লেখা।</div>` : '') +
       lastFound.map((f, i) => `
       <article class="ticket">
         <div class="ticket-main">
+          <div class="ticket-exam">📝 ${SP.esc(f.plan.title)}</div>
           <div class="ticket-who"><b>${SP.esc(SP.groupLabel(f.seat))}</b><span class="roll">রোল ${SP.bn(SP.esc(f.seat.roll))}</span></div>
           <div class="ticket-grid">
             <div class="ticket-cell"><span>কক্ষ</span><strong>${SP.bn(SP.esc(f.room.no))}</strong><small>${SP.esc(f.room.floor || ' ')}</small></div>
@@ -222,6 +236,7 @@
   }
 
   function showSeat(f) {
+    plan = f.plan;
     sessionId = f.session.id;
     highlight = { roomId: f.room.id, key: f.key };
     render();
@@ -233,7 +248,7 @@
 
   function seatLink(f) {
     const u = new URL(location.href.split('?')[0].split('#')[0]);
-    if (plans.length > 1) u.searchParams.set('plan', plan.id);
+    if (plans.length > 1) u.searchParams.set('plan', f.plan.id);
     u.searchParams.set('cls', f.seat.cls);
     u.searchParams.set('roll', String(SP.num(f.seat.roll)));
     if (f.seat.sec && f.seat.sec !== SP.NA) u.searchParams.set('sec', f.seat.sec);
@@ -286,8 +301,8 @@
     x.textAlign = 'center'; x.textBaseline = 'alphabetic';
     x.fillStyle = '#fff'; fitText(x, data.settings.schoolName, W - 120, 44, 700, SERIF);
     x.fillText(data.settings.schoolName, W / 2, 250);
-    x.fillStyle = '#c9d6f3'; fitText(x, plan.title, W - 160, 32, 500, HS);
-    x.fillText(plan.title, W / 2, 296);
+    x.fillStyle = '#c9d6f3'; fitText(x, f.plan.title, W - 160, 32, 500, HS);
+    x.fillText(f.plan.title, W / 2, 296);
 
     // কার্ড
     const CX = 60, CW = W - 120, CY = 390, CH = 880;
@@ -395,7 +410,7 @@
     btn.disabled = true;
     try {
       const file = await makeFile(f);
-      const text = `${data.settings.schoolName} — ${plan.title}\n${SP.groupLabel(f.seat)}, রোল ${SP.bn(f.seat.roll)}: কক্ষ ${SP.bn(f.room.no)}, বেঞ্চ ${SP.bn(f.bench)}, ${f.pos} আসন`;
+      const text = `${data.settings.schoolName} — ${f.plan.title}\n${SP.groupLabel(f.seat)}, রোল ${SP.bn(f.seat.roll)}: কক্ষ ${SP.bn(f.room.no)}, বেঞ্চ ${SP.bn(f.bench)}, ${f.pos} আসন`;
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'পরীক্ষার আসন', text });
       else await navigator.share({ title: 'পরীক্ষার আসন', text, url: seatLink(f) });
     } catch (e) { if (e && e.name !== 'AbortError') SP.toast('শেয়ার করা যায়নি। "লিংক কপি" ব্যবহার করুন।', 'bad'); }

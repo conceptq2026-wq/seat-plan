@@ -102,6 +102,13 @@ a { color: var(--blue-700); }
 .finder .more-grid .field { margin: 0; }
 .finder .more-hint { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
 
+.exam-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.exam-label { font-size: 15px; font-weight: 600; color: var(--muted); margin-right: 4px; }
+.exam-btn { border: 1.5px solid var(--line-strong); background: #fff; color: var(--ink-soft); border-radius: 999px; padding: 6px 18px; font-size: 16.5px; font-weight: 600; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
+.exam-btn:hover { border-color: var(--blue-700); background: var(--water); }
+.exam-btn.active { background: var(--blue-700); border-color: var(--blue-700); color: #fff; }
+.ticket-exam { font-size: 15px; font-weight: 600; color: var(--blue-700); margin-bottom: 6px; }
+
 .result-area { margin-top: 18px; }
 .result-msg { border-radius: var(--radius); padding: 14px 18px; font-weight: 600; background: var(--water); color: var(--blue-900); }
 .result-msg.bad { background: var(--red-50); color: var(--red-700); }
