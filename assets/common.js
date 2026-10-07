@@ -251,7 +251,8 @@
   };
 
   SP.printHead = (settings, plan, session) =>
-    `<div style="font-size:20px;font-weight:800">${SP.esc(settings.schoolName)}${settings.established ? ` (স্থাপিত: ${SP.esc(settings.established)})` : ''}</div>
+    `<img src="assets/logo.jpg" alt="" style="height:64px;width:64px;object-fit:contain;display:block;margin:0 auto 4px">
+     <div style="font-size:20px;font-weight:800">${SP.esc(settings.schoolName)}${settings.established ? ` (স্থাপিত: ${SP.esc(settings.established)})` : ''}</div>
      <div style="font-size:16px;font-weight:700">${SP.esc(plan.title)} — ${SP.esc(session.icon || '')} ${SP.esc(session.name)}${session.time ? ` (${SP.esc(session.time)})` : ''}</div>`;
 
   SP.sessionTabsHtml = (plan, currentId, extraHtml) =>

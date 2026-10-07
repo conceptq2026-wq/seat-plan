@@ -27,6 +27,8 @@ button, input, select { font-family: inherit; }
 /* ---------- Header ---------- */
 .site-header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 24px 0; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-bottom: 5px solid var(--accent); }
 .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px; }
+.brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.school-logo { width: 84px; height: 84px; flex-shrink: 0; border-radius: 50%; background: #fff; padding: 4px; object-fit: contain; box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 4px 14px rgba(0,0,0,0.35); }
 .school-title { font-size: clamp(22px, 4vw, 32px); font-weight: 800; color: #fff; margin: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; line-height: 1.4; }
 .est-badge { font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); padding: 2px 10px; border-radius: 20px; color: #38bdf8; }
 .admin-badge { font-size: 14px; font-weight: 800; background: #f59e0b; color: #000; padding: 2px 12px; border-radius: 20px; }
@@ -201,6 +203,8 @@ body.is-admin .seat-cell.has-student { cursor: grab; }
 @media (max-width: 640px) {
   body { font-size: 16px; }
   .shift-tabs { width: 100%; }
+  .brand { gap: 12px; align-items: flex-start; }
+  .school-logo { width: 60px; height: 60px; padding: 3px; }
   .shift-btn { flex: 1; min-width: 140px; }
   .room-header { padding: 14px; }
   .room-meta { display: block; margin-left: 0; }

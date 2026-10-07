@@ -73,5 +73,7 @@ assets/style.css    ডিজাইন
 assets/common.js    দুই পাতার সাধারণ কোড (আসনের হিসাব, চার্ট, খোঁজা)
 assets/admin.js     এডমিনের কাজ ও GitHub-এ প্রকাশ
 assets/config.js    (ঐচ্ছিক) নিজস্ব ডোমেইনের জন্য রিপোর নাম
+assets/logo.jpg     বিদ্যালয়ের লোগো (হেডার, প্রিন্ট ও Word ফাইলে)
+assets/favicon.png  ব্রাউজার ট্যাবের আইকন
 data/plans.json     সব সিট প্ল্যানের ডেটা
 ```

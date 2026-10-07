@@ -574,6 +574,7 @@
  .side-title { text-align: center; margin: 8px 0 0; }
  .aisle-text, .classroom-aisle { display: none; }
 </style></head><body>
+<p style="text-align:center;margin:0"><img src="${SP.esc(new URL('assets/logo.jpg', location.href).href)}" width="70" height="70" alt=""></p>
 <h2 style="text-align:center;margin:0">${SP.esc(s.schoolName)}${s.established ? ` (স্থাপিত: ${SP.esc(s.established)})` : ''}</h2>
 <h3 style="text-align:center;margin:4px 0">${SP.esc(plan.title)} — ${SP.esc(se.name)}${se.time ? ` (${SP.esc(se.time)})` : ''}</h3>
 <hr>${clone.innerHTML}</body></html>`;
